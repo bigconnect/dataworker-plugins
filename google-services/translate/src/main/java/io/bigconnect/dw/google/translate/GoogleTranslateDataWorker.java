@@ -1,0 +1,217 @@
+/*
+ * This file is part of the BigConnect project.
+ *
+ * Copyright (c) 2013-2020 MWARE SOLUTIONS SRL
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License version 3
+ * as published by the Free Software Foundation with the addition of the
+ * following permission added to Section 15 as permitted in Section 7(a):
+ * FOR ANY PART OF THE COVERED WORK IN WHICH THE COPYRIGHT IS OWNED BY
+ * MWARE SOLUTIONS SRL, MWARE SOLUTIONS SRL DISCLAIMS THE WARRANTY OF
+ * NON INFRINGEMENT OF THIRD PARTY RIGHTS
+
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU Affero General Public License for more details.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program; if not, see http://www.gnu.org/licenses or write to
+ * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA, 02110-1301 USA, or download the license from the following URL:
+ * https://www.gnu.org/licenses/agpl-3.0.txt
+ *
+ * The interactive user interfaces in modified source and object code versions
+ * of this program must display Appropriate Legal Notices, as required under
+ * Section 5 of the GNU Affero General Public License.
+ *
+ * You can be released from the requirements of the license by purchasing
+ * a commercial license. Buying such a license is mandatory as soon as you
+ * develop commercial activities involving the BigConnect software without
+ * disclosing the source code of your own applications.
+ *
+ * These activities include: offering paid services to customers as an ASP,
+ * embedding the product in a web application, shipping BigConnect with a
+ * closed source product.
+ */
+package io.bigconnect.dw.google.translate;
+
+import com.google.cloud.translate.v3beta1.*;
+import com.google.inject.Singleton;
+import com.mware.core.ingest.dataworker.DataWorker;
+import com.mware.core.ingest.dataworker.DataWorkerData;
+import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
+import com.mware.core.ingest.dataworker.ElementOrPropertyStatus;
+import com.mware.core.model.Description;
+import com.mware.core.model.Name;
+import com.mware.core.model.clientapi.dto.VisibilityJson;
+import com.mware.core.model.properties.BcSchema;
+import com.mware.core.model.properties.RawObjectSchema;
+import com.mware.core.model.properties.types.PropertyMetadata;
+import com.mware.core.model.workQueue.Priority;
+import com.mware.core.util.BcLogger;
+import com.mware.core.util.BcLoggerFactory;
+import com.mware.ge.Element;
+import com.mware.ge.Metadata;
+import com.mware.ge.Property;
+import com.mware.ge.Visibility;
+import com.mware.ge.util.Preconditions;
+import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
+import com.mware.ge.values.storable.StreamingPropertyValue;
+import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
+import io.bigconnect.dw.text.common.TextPropertyHelper;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@Name("Google Translate")
+@Description("Uses Google API to translate text to English")
+@Singleton
+public class GoogleTranslateDataWorker extends DataWorker {
+    private static final BcLogger LOGGER = BcLoggerFactory.getLogger(GoogleTranslateDataWorker.class);
+    private static final String CONFIG_TARGET_LANGUAGE = "google.translate.target_language";
+
+    private Set<String> supportedLanguages;
+    private String targetLanguage;
+
+    @Override
+    public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
+        super.prepare(workerPrepareData);
+        GoogleCredentialUtils.checkCredentials();
+
+        targetLanguage = getConfiguration().get(CONFIG_TARGET_LANGUAGE, "");
+        Preconditions.checkState(!StringUtils.isEmpty(targetLanguage),
+                "Please provide the "+CONFIG_TARGET_LANGUAGE+" config property");
+
+        supportedLanguages = getSupportedTranslations();
+        Preconditions.checkState(supportedLanguages != null && !supportedLanguages.isEmpty(),
+                "No translations supported for language: "+targetLanguage);
+    }
+
+    @Override
+    public boolean isHandled(Element element, Property property) {
+        if (property == null) {
+            return false;
+        }
+
+        // if the RAW_LANGUAGE property is pushed on queue, it means the text was already extracted
+        if (property.getName().equals(RawObjectSchema.RAW_LANGUAGE.getPropertyName())) {
+            String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
+            boolean canTranslate = supportedLanguages.contains(language) && !targetLanguage.equals(language);
+            if (!canTranslate) {
+                LOGGER.debug("Language pair not available for translation: %s to %s", language, targetLanguage);
+                return false;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    @Override
+    public void execute(InputStream in, DataWorkerData data) throws Exception {
+        Element element = refresh(data.getElement());
+        Property property = element.getProperty(data.getProperty().getKey(), data.getProperty().getName());
+
+        String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
+        if (StringUtils.isEmpty(language)) {
+            LOGGER.debug("Could not determine language available for the provided text");
+            return;
+        }
+
+        // look for the TEXT property with the same language
+        Optional<Property> textProperty = TextPropertyHelper.getTextPropertyForLanguage(element, language);
+
+        if (!textProperty.isPresent()) {
+            return;
+        }
+
+        StreamingPropertyValue spv = BcSchema.TEXT.getPropertyValue(textProperty.get());
+        String text = IOUtils.toString(spv.getInputStream(), StandardCharsets.UTF_8);
+
+        if (StringUtils.isEmpty(text)) {
+            LOGGER.warn("Found an empty TEXT property for language: %s", language);
+            return;
+        }
+
+        try (TranslationServiceClient client = TranslationServiceClient.create()) {
+            LocationName parent = LocationName.of(GoogleCredentialUtils.getProjectId(), "global");
+
+            TranslateTextRequest req = TranslateTextRequest.newBuilder()
+                    .setParent(parent.toString())
+                    .setMimeType("text/plain")
+                    .setSourceLanguageCode(language)
+                    .setTargetLanguageCode(targetLanguage)
+                    .addContents(text)
+                    .build();
+            TranslateTextResponse response = client.translateText(req);
+            String translatedText = response.getTranslationsList().get(0).getTranslatedText();
+
+            PropertyMetadata propertyMetadata = new PropertyMetadata(getUser(), new VisibilityJson(), Visibility.EMPTY);
+            BcSchema.MIME_TYPE_METADATA.setMetadata(propertyMetadata, "text/plain", Visibility.EMPTY);
+            BcSchema.TEXT_DESCRIPTION_METADATA.setMetadata(propertyMetadata, "Translated Text", Visibility.EMPTY);
+            BcSchema.TEXT_LANGUAGE_METADATA.setMetadata(propertyMetadata, targetLanguage, Visibility.EMPTY);
+            Metadata textMetadata = propertyMetadata.createMetadata();
+            BcSchema.TEXT.addPropertyValue(
+                    element,
+                    targetLanguage,
+                    DefaultStreamingPropertyValue.create(translatedText),
+                    textMetadata,
+                    Visibility.EMPTY,
+                    getAuthorizations()
+            );
+
+            // add also the new language
+            propertyMetadata = new PropertyMetadata(getUser(), new VisibilityJson(), Visibility.EMPTY);
+            RawObjectSchema.RAW_LANGUAGE.addPropertyValue(element, targetLanguage, targetLanguage,
+                    propertyMetadata.createMetadata(), Visibility.EMPTY, getAuthorizations());
+
+            getGraph().flush();
+
+            getWorkQueueRepository().pushGraphPropertyQueue(
+                    element,
+                    targetLanguage,
+                    BcSchema.TEXT.getPropertyName(),
+                    data.getWorkspaceId(),
+                    data.getVisibilitySource(),
+                    Priority.HIGH,
+                    ElementOrPropertyStatus.UPDATE,
+                    null
+            );
+
+            getWorkQueueRepository().pushGraphPropertyQueue(
+                    element,
+                    targetLanguage,
+                    RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
+                    data.getWorkspaceId(),
+                    data.getVisibilitySource(),
+                    Priority.HIGH,
+                    ElementOrPropertyStatus.UPDATE,
+                    null
+            );
+        } catch (Exception ex) {
+            LOGGER.warn("Could not perform translation.", ex);
+        }
+    }
+
+    public Set<String> getSupportedTranslations() throws IOException {
+        try (TranslationServiceClient client = TranslationServiceClient.create()) {
+            LocationName parent = LocationName.of(GoogleCredentialUtils.getProjectId(), "global");
+            GetSupportedLanguagesRequest request = GetSupportedLanguagesRequest.newBuilder()
+                    .setParent(parent.toString())
+                    .setDisplayLanguageCode(targetLanguage)
+                    .build();
+            SupportedLanguages response = client.getSupportedLanguages(request);
+            return response.getLanguagesList().stream()
+                    .map(SupportedLanguage::getLanguageCode)
+                    .collect(Collectors.toSet());
+        }
+    }
+}
