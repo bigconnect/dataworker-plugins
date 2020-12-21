@@ -53,7 +53,7 @@ In order to install a Data Processing plugin just copy the jar file of the plugi
 ## Contributing
 Contributions are warmly welcomed and greatly appreciated. Here are a few ways you can contribute:
 
-* Start by fixing some [issues](https://github.com/bigconnect/bigconnect/issues?q=is%3Aissue+is%3Aopen)
+* Start by fixing some [issues](https://github.com/bigconnect/dataworker-plugins/issues?q=is%3Aissue+is%3Aopen)
 * Submit a Pull Request with your fix
 
 ## Getting help & Contact
