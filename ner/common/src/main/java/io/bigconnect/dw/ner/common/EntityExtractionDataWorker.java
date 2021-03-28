@@ -195,8 +195,9 @@ public class EntityExtractionDataWorker extends DataWorker {
             Vertex resolvedToVertex = findExistingVertexWithConceptAndTitle(SchemaConstants.CONCEPT_TYPE_LOCATION, name);
             if (resolvedToVertex == null && resolveUnknownEntities) {
                 resolvedToVertex = createResolvedVertex(SchemaConstants.CONCEPT_TYPE_LOCATION, name, outVertex.getVisibility());
-                GeoPoint geoPoint = new GeoPoint(resolvedLocation.getGeoname().getLatitude(), resolvedLocation.getGeoname().getLongitude());
-                RawObjectSchema.GEOLOCATION_PROPERTY.addPropertyValue(resolvedToVertex, "", geoPoint, resolvedToVertex.getVisibility(), getAuthorizations());
+                // Comentat pt ca se rezolva de serviciul de AI, prin pipelines
+                //GeoPoint geoPoint = new GeoPoint(resolvedLocation.getGeoname().getLatitude(), resolvedLocation.getGeoname().getLongitude());
+                //RawObjectSchema.GEOLOCATION_PROPERTY.addPropertyValue(resolvedToVertex, "", geoPoint, resolvedToVertex.getVisibility(), getAuthorizations());
             }
 
             if (resolvedToVertex != null) {
