@@ -47,6 +47,7 @@ import com.mware.core.model.Name;
 import com.mware.core.model.clientapi.dto.VisibilityJson;
 import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
+import com.mware.core.model.properties.types.BooleanBcProperty;
 import com.mware.core.model.properties.types.PropertyMetadata;
 import com.mware.core.model.workQueue.Priority;
 import com.mware.core.util.BcLogger;
@@ -56,6 +57,7 @@ import com.mware.ge.Metadata;
 import com.mware.ge.Property;
 import com.mware.ge.Visibility;
 import com.mware.ge.util.Preconditions;
+import com.mware.ge.values.storable.BooleanValue;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.StreamingPropertyValue;
 import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
@@ -69,6 +71,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import static io.bigconnect.dw.google.translate.GoogleTranslateSchemaContribution.GOOGLE_TRANSLATE_PROPERTY;
 
 @Name("Google Translate")
 @Description("Uses Google API to translate text to English")
@@ -100,19 +104,22 @@ public class GoogleTranslateDataWorker extends DataWorker {
             return false;
         }
 
-        // if the RAW_LANGUAGE property is pushed on queue, it means the text was already extracted
-        if (property.getName().equals(RawObjectSchema.RAW_LANGUAGE.getPropertyName())) {
-            String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
-            boolean canTranslate = supportedLanguages.contains(language) && !targetLanguage.equals(language);
-            if (!canTranslate) {
-                LOGGER.debug("Language pair not available for translation: %s to %s", language, targetLanguage);
-                return false;
-            }
+        boolean googleTranslate = GOOGLE_TRANSLATE_PROPERTY.getPropertyName().equals(property.getName());
+        if (!googleTranslate)
+            return false;
 
-            return true;
+        if (property.getValue() == null || !(property.getValue() instanceof BooleanValue)) {
+            return false;
         }
 
-        return false;
+        String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
+        boolean canTranslate = supportedLanguages.contains(language) && !targetLanguage.equals(language);
+        if (!canTranslate) {
+            LOGGER.debug("Language pair not available for translation: %s to %s", language, targetLanguage);
+            return false;
+        }
+
+        return ((BooleanValue) property.getValue()).booleanValue();
     }
 
     @Override
@@ -140,6 +147,8 @@ public class GoogleTranslateDataWorker extends DataWorker {
             LOGGER.warn("Found an empty TEXT property for language: %s", language);
             return;
         }
+
+        LOGGER.info("Translating....");
 
         try (TranslationServiceClient client = TranslationServiceClient.create()) {
             LocationName parent = LocationName.of(GoogleCredentialUtils.getProjectId(), "global");
