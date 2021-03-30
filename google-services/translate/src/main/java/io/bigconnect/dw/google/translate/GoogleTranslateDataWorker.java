@@ -112,13 +112,6 @@ public class GoogleTranslateDataWorker extends DataWorker {
             return false;
         }
 
-        String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
-        boolean canTranslate = supportedLanguages.contains(language) && !targetLanguage.equals(language);
-        if (!canTranslate) {
-            LOGGER.debug("Language pair not available for translation: %s to %s", language, targetLanguage);
-            return false;
-        }
-
         return ((BooleanValue) property.getValue()).booleanValue();
     }
 
@@ -131,6 +124,11 @@ public class GoogleTranslateDataWorker extends DataWorker {
         if (StringUtils.isEmpty(language)) {
             LOGGER.debug("Could not determine language available for the provided text");
             return;
+        }
+
+        boolean canTranslate = supportedLanguages.contains(language) && !targetLanguage.equals(language);
+        if (!canTranslate) {
+            LOGGER.debug("Language pair not available for translation: %s to %s", language, targetLanguage);
         }
 
         // look for the TEXT property with the same language
