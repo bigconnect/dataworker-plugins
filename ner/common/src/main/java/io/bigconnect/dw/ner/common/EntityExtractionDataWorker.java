@@ -322,7 +322,7 @@ public class EntityExtractionDataWorker extends DataWorker {
     private Vertex findExistingVertexWithConceptAndTitle(String conceptType, String title) {
         try (QueryResultsIterable<Vertex> existingVertices = getGraph().query(getAuthorizations())
                 .hasConceptType(conceptType)
-                .has(BcSchema.TITLE.getPropertyName(), Compare.EQUAL, Values.stringValue(title))
+                .has(BcSchema.TITLE.getPropertyName(), Compare.EQUAL, Values.stringValue(title.trim()))
                 .vertices()) {
 
             Iterator<Vertex> iterator = existingVertices.iterator();
