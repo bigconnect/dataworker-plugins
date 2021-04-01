@@ -68,6 +68,8 @@ import org.apache.commons.lang3.StringUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -83,6 +85,7 @@ public class GoogleTranslateDataWorker extends DataWorker {
 
     private Set<String> supportedLanguages;
     private String targetLanguage;
+    private LocationName locationName;
 
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
@@ -91,11 +94,13 @@ public class GoogleTranslateDataWorker extends DataWorker {
 
         targetLanguage = getConfiguration().get(CONFIG_TARGET_LANGUAGE, "");
         Preconditions.checkState(!StringUtils.isEmpty(targetLanguage),
-                "Please provide the "+CONFIG_TARGET_LANGUAGE+" config property");
+                "Please provide the " + CONFIG_TARGET_LANGUAGE + " config property");
 
         supportedLanguages = getSupportedTranslations();
         Preconditions.checkState(supportedLanguages != null && !supportedLanguages.isEmpty(),
-                "No translations supported for language: "+targetLanguage);
+                "No translations supported for language: " + targetLanguage);
+
+        locationName = LocationName.of(GoogleCredentialUtils.getProjectId(), "global");
     }
 
     @Override
@@ -118,93 +123,78 @@ public class GoogleTranslateDataWorker extends DataWorker {
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
         Element element = refresh(data.getElement());
-        Property property = element.getProperty(data.getProperty().getKey(), data.getProperty().getName());
 
-        String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
-        if (StringUtils.isEmpty(language)) {
-            LOGGER.debug("Could not determine language available for the provided text");
-            return;
+        List<Property> propertiesToTranslate = new ArrayList<>();
+        // find first property different than target language
+        for (Property property : BcSchema.TEXT.getProperties(element)) {
+            String textLanguage = TextPropertyHelper.getTextLanguage(property);
+            if (!targetLanguage.equals(textLanguage)) {
+                boolean canTranslate = supportedLanguages.contains(textLanguage);
+                if (canTranslate)
+                    propertiesToTranslate.add(property);
+            }
         }
 
-        boolean canTranslate = supportedLanguages.contains(language) && !targetLanguage.equals(language);
-        if (!canTranslate) {
-            LOGGER.debug("Language pair not available for translation: %s to %s", language, targetLanguage);
-        }
+        try (TranslationServiceClient googleClient = TranslationServiceClient.create()) {
+            for (Property property : propertiesToTranslate) {
+                StreamingPropertyValue spv = BcSchema.TEXT.getPropertyValue(property);
+                String text = IOUtils.toString(spv.getInputStream(), StandardCharsets.UTF_8);
+                if (StringUtils.isEmpty(text)) {
+                    continue;
+                }
 
-        // look for the TEXT property with the same language
-        Optional<Property> textProperty = TextPropertyHelper.getTextPropertyForLanguage(element, language);
+                String sourceLanguage = TextPropertyHelper.getTextLanguage(property);
 
-        if (!textProperty.isPresent()) {
-            return;
-        }
+                try {
+                    TranslateTextRequest req = TranslateTextRequest.newBuilder()
+                            .setParent(locationName.toString())
+                            .setMimeType("text/plain")
+                            .setSourceLanguageCode(sourceLanguage)
+                            .setTargetLanguageCode(targetLanguage)
+                            .addContents(text)
+                            .build();
 
-        StreamingPropertyValue spv = BcSchema.TEXT.getPropertyValue(textProperty.get());
-        String text = IOUtils.toString(spv.getInputStream(), StandardCharsets.UTF_8);
+                    TranslateTextResponse response = googleClient.translateText(req);
+                    String translatedText = response.getTranslationsList().get(0).getTranslatedText();
 
-        if (StringUtils.isEmpty(text)) {
-            LOGGER.warn("Found an empty TEXT property for language: %s", language);
-            return;
-        }
+                    PropertyMetadata propertyMetadata = new PropertyMetadata(getUser(), new VisibilityJson(), Visibility.EMPTY);
+                    BcSchema.MIME_TYPE_METADATA.setMetadata(propertyMetadata, "text/plain", Visibility.EMPTY);
+                    BcSchema.TEXT_DESCRIPTION_METADATA.setMetadata(propertyMetadata, "Translated Text", Visibility.EMPTY);
+                    BcSchema.TEXT_LANGUAGE_METADATA.setMetadata(propertyMetadata, targetLanguage, Visibility.EMPTY);
 
-        LOGGER.info("Translating....");
+                    Metadata textMetadata = propertyMetadata.createMetadata();
+                    String newTextPropertyKey = sourceLanguage + "-" + targetLanguage;
+                    BcSchema.TEXT.addPropertyValue(
+                            element,
+                            newTextPropertyKey,
+                            DefaultStreamingPropertyValue.create(translatedText),
+                            textMetadata,
+                            Visibility.EMPTY,
+                            getAuthorizations()
+                    );
 
-        try (TranslationServiceClient client = TranslationServiceClient.create()) {
-            LocationName parent = LocationName.of(GoogleCredentialUtils.getProjectId(), "global");
+                    // add also the new language
+                    RawObjectSchema.RAW_LANGUAGE.addPropertyValue(element, newTextPropertyKey, targetLanguage,
+                            propertyMetadata.createMetadata(), Visibility.EMPTY, getAuthorizations());
 
-            TranslateTextRequest req = TranslateTextRequest.newBuilder()
-                    .setParent(parent.toString())
-                    .setMimeType("text/plain")
-                    .setSourceLanguageCode(language)
-                    .setTargetLanguageCode(targetLanguage)
-                    .addContents(text)
-                    .build();
-            TranslateTextResponse response = client.translateText(req);
-            String translatedText = response.getTranslationsList().get(0).getTranslatedText();
+                    getGraph().flush();
 
-            PropertyMetadata propertyMetadata = new PropertyMetadata(getUser(), new VisibilityJson(), Visibility.EMPTY);
-            BcSchema.MIME_TYPE_METADATA.setMetadata(propertyMetadata, "text/plain", Visibility.EMPTY);
-            BcSchema.TEXT_DESCRIPTION_METADATA.setMetadata(propertyMetadata, "Translated Text", Visibility.EMPTY);
-            BcSchema.TEXT_LANGUAGE_METADATA.setMetadata(propertyMetadata, targetLanguage, Visibility.EMPTY);
-            Metadata textMetadata = propertyMetadata.createMetadata();
-            BcSchema.TEXT.addPropertyValue(
-                    element,
-                    targetLanguage,
-                    DefaultStreamingPropertyValue.create(translatedText),
-                    textMetadata,
-                    Visibility.EMPTY,
-                    getAuthorizations()
-            );
-
-            // add also the new language
-            propertyMetadata = new PropertyMetadata(getUser(), new VisibilityJson(), Visibility.EMPTY);
-            RawObjectSchema.RAW_LANGUAGE.addPropertyValue(element, targetLanguage, targetLanguage,
-                    propertyMetadata.createMetadata(), Visibility.EMPTY, getAuthorizations());
-
-            getGraph().flush();
-
-            getWorkQueueRepository().pushGraphPropertyQueue(
-                    element,
-                    targetLanguage,
-                    BcSchema.TEXT.getPropertyName(),
-                    data.getWorkspaceId(),
-                    data.getVisibilitySource(),
-                    Priority.HIGH,
-                    ElementOrPropertyStatus.UPDATE,
-                    null
-            );
-
-            getWorkQueueRepository().pushGraphPropertyQueue(
-                    element,
-                    targetLanguage,
-                    RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
-                    data.getWorkspaceId(),
-                    data.getVisibilitySource(),
-                    Priority.HIGH,
-                    ElementOrPropertyStatus.UPDATE,
-                    null
-            );
+                    getWorkQueueRepository().pushGraphPropertyQueue(
+                            element,
+                            newTextPropertyKey,
+                            RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
+                            data.getWorkspaceId(),
+                            data.getVisibilitySource(),
+                            Priority.HIGH,
+                            ElementOrPropertyStatus.UPDATE,
+                            null
+                    );
+                } catch (Exception ex) {
+                    LOGGER.warn("Could not perform translation.", ex);
+                }
+            }
         } catch (Exception ex) {
-            LOGGER.warn("Could not perform translation.", ex);
+            LOGGER.warn("Could not create translation client.", ex);
         }
     }
 

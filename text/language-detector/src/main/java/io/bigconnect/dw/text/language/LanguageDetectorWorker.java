@@ -37,7 +37,6 @@
 package io.bigconnect.dw.text.language;
 
 import com.google.common.base.Optional;
-import com.google.common.collect.Iterables;
 import com.mware.core.ingest.dataworker.DataWorker;
 import com.mware.core.ingest.dataworker.DataWorkerData;
 import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
@@ -46,28 +45,21 @@ import com.mware.core.model.Description;
 import com.mware.core.model.Name;
 import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
-import com.mware.core.model.properties.types.BcProperty;
-import com.mware.core.model.properties.types.PropertyMetadata;
-import com.mware.ge.*;
+import com.mware.core.util.BcLogger;
+import com.mware.core.util.BcLoggerFactory;
+import com.mware.ge.Element;
+import com.mware.ge.Property;
+import com.mware.ge.Vertex;
+import com.mware.ge.Visibility;
 import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.values.storable.Values;
-import com.optimaize.langdetect.LanguageDetector;
-import com.optimaize.langdetect.LanguageDetectorBuilder;
 import com.optimaize.langdetect.i18n.LdLocale;
-import com.optimaize.langdetect.ngram.NgramExtractors;
 import com.optimaize.langdetect.profiles.BuiltInLanguages;
-import com.optimaize.langdetect.profiles.LanguageProfile;
-import com.optimaize.langdetect.profiles.LanguageProfileReader;
-import com.optimaize.langdetect.text.CommonTextObjectFactories;
-import com.optimaize.langdetect.text.TextObject;
-import com.optimaize.langdetect.text.TextObjectFactory;
-import io.bigconnect.dw.text.common.TextPropertyHelper;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -75,16 +67,13 @@ import java.util.stream.Collectors;
 @Name("Text Language Detector")
 @Description("Detect the language of a piece of text")
 public class LanguageDetectorWorker extends DataWorker {
-    private LanguageDetector languageDetector;
+    private static final BcLogger LOGGER = BcLoggerFactory.getLogger(LanguageDetectorWorker.class);
+    private LanguageDetectorUtil languageDetector;
 
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
         super.prepare(workerPrepareData);
-
-        List<LanguageProfile> languageProfiles = new LanguageProfileReader().readAllBuiltIn();
-        languageDetector = LanguageDetectorBuilder.create(NgramExtractors.standard())
-                .withProfiles(languageProfiles)
-                .build();
+        this.languageDetector = new LanguageDetectorUtil();
     }
 
     @Override
@@ -93,7 +82,12 @@ public class LanguageDetectorWorker extends DataWorker {
             return false;
         }
 
-        return BcSchema.TEXT.getPropertyName().equals(property.getName());
+        // if the text was changed
+        if (BcSchema.TEXT.getPropertyName().equals(property.getName())) {
+            return true;
+        }
+
+        return false;
     }
 
     @Override
@@ -102,46 +96,31 @@ public class LanguageDetectorWorker extends DataWorker {
         if (StringUtils.isEmpty(text))
             return;
 
-        String existingLanguage = TextPropertyHelper.getTextLanguage(data.getProperty());
-        if (!StringUtils.isEmpty(existingLanguage)) {
-            // this text property already has a language, check to see if the language is added to the
-            // RAW_LANGUAGE prop
-            Iterable<String> existingLanguages = RawObjectSchema.RAW_LANGUAGE.getPropertyValues(data.getElement());
-            if (!Iterables.contains(existingLanguages, existingLanguage)) {
-                RawObjectSchema.RAW_LANGUAGE.addPropertyValue(data.getElement(), existingLanguage, existingLanguage,
-                        data.createPropertyMetadata(getUser()), data.getVisibility(), getAuthorizations());
-                getGraph().flush();
-                return;
-            } else {
-                // the language is already there
-                return;
-            }
-        }
+        Optional<String> language = languageDetector.detectLanguage(text);
+        if (language.isPresent()) {
+            // set the new language
+            ExistingElementMutation<Vertex> m = refresh(data.getElement()).prepareMutation();
+            m.setPropertyMetadata(data.getProperty(), BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
+                    Values.stringValue(language.get()), Visibility.EMPTY);
 
-        TextObjectFactory textObjectFactory = CommonTextObjectFactories.forDetectingOnLargeText();
-        TextObject textObject = textObjectFactory.forText(text);
-        Optional<LdLocale> lang = languageDetector.detect(textObject);
+            // the key for the RAW_LANGUAGE prop must be the same as the TEXT prop key for which the language is detected
+            // this combination is used later in the EntityExtractor and SentimentExtractor
+            m.addPropertyValue(data.getProperty().getKey(), RawObjectSchema.RAW_LANGUAGE.getPropertyName(), Values.stringValue(language.get()), Visibility.EMPTY);
 
-        if (lang.isPresent()) {
-            String language = lang.get().getLanguage();
-            ExistingElementMutation<Vertex> mutation = refresh(data.getElement()).prepareMutation();
-            mutation.setPropertyMetadata(data.getProperty(), BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
-                    Values.stringValue(language), Visibility.EMPTY);
-            RawObjectSchema.RAW_LANGUAGE.addPropertyValue(mutation, language, language,
-                    data.createPropertyMetadata(getUser()), data.getVisibility());
-
-            Element e = mutation.save(getAuthorizations());
+            Element e = m.save(getAuthorizations());
             getGraph().flush();
 
-             getWorkQueueRepository().pushGraphPropertyQueue(
+            getWorkQueueRepository().pushGraphPropertyQueue(
                     e,
-                    language,
+                    data.getProperty().getKey(),
                     RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
                     data.getWorkspaceId(),
                     null,
                     data.getPriority(),
                     ElementOrPropertyStatus.UPDATE,
                     null);
+        } else {
+            LOGGER.warn("Could not detect language for text: " + text);
         }
     }
 

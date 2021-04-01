@@ -44,6 +44,7 @@
         <module>url-analysis</module>
         <module>mime-type</module>
         <module>google-services</module>
+        <module>tester</module>
     </modules>
 
     <repositories>

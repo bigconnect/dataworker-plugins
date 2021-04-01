@@ -44,7 +44,6 @@ import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
 import com.mware.core.model.clientapi.dto.VisibilityJson;
 import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
-import com.mware.core.model.properties.types.BcProperty;
 import com.mware.core.model.schema.SchemaConstants;
 import com.mware.core.model.termMention.TermMentionBuilder;
 import com.mware.core.model.termMention.TermMentionRepository;
@@ -55,7 +54,6 @@ import com.mware.ge.*;
 import com.mware.ge.mutation.ElementMutation;
 import com.mware.ge.query.Compare;
 import com.mware.ge.query.QueryResultsIterable;
-import com.mware.ge.type.GeoPoint;
 import com.mware.ge.values.storable.StreamingPropertyValue;
 import com.mware.ge.values.storable.Values;
 import com.mware.ontology.IgnoredMimeTypes;
@@ -65,16 +63,14 @@ import io.bigconnect.dw.ner.common.extractor.OrganizationOccurrence;
 import io.bigconnect.dw.ner.common.extractor.PersonOccurrence;
 import io.bigconnect.dw.ner.common.orgs.ResolvedOrganization;
 import io.bigconnect.dw.ner.common.people.ResolvedPerson;
-import io.bigconnect.dw.text.common.TextPropertyHelper;
+import io.bigconnect.dw.text.common.NerUtils;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.stream.StreamSupport;
 
 public class EntityExtractionDataWorker extends DataWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(EntityExtractionDataWorker.class);
@@ -104,13 +100,10 @@ public class EntityExtractionDataWorker extends DataWorker {
         if (IgnoredMimeTypes.contains(BcSchema.MIME_TYPE.getFirstPropertyValue(element)))
             return false;
 
-        // if the RAW_LANGUAGE property is pushed on queue, it means the text was already extracted
         if (property.getName().equals(RawObjectSchema.RAW_LANGUAGE.getPropertyName())) {
-            return true;
-        }
-
-        if (property.getName().equals(BcSchema.TEXT.getPropertyName())) {
-            return true;
+            // do entity extraction only if language is set
+            String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
+            return !StringUtils.isEmpty(language);
         }
 
         return false;
@@ -118,52 +111,42 @@ public class EntityExtractionDataWorker extends DataWorker {
 
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
-        String language;
-        if (BcSchema.TEXT.getPropertyName().equals(data.getProperty().getName())) {
-            Property textProperty = BcSchema.TEXT.getProperty(refresh(data.getElement()), data.getProperty().getKey());
-            language = TextPropertyHelper.getTextLanguage(textProperty);
-        } else {
-            language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(data.getProperty());
-        }
-        // look for the TEXT property with the same language
-        Optional<Property> textProperty = TextPropertyHelper.getTextPropertyForLanguage(data.getElement(), language);
-
-        if (!textProperty.isPresent()) {
-            return;
-        }
-
-        StreamingPropertyValue spv = BcSchema.TEXT.getPropertyValue(textProperty.get());
-        String text = IOUtils.toString(spv.getInputStream(), StandardCharsets.UTF_8);
-        if (StringUtils.isEmpty(text)) {
-            LOGGER.warn("Found an empty TEXT property for language: %s", language);
-            return;
-        }
-
         Vertex outVertex = (Vertex) refresh(data.getElement());
+        String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(data.getProperty());
+        StreamingPropertyValue textProperty = BcSchema.TEXT.getPropertyValue(refresh(data.getElement()), data.getProperty().getKey());
 
-        // delete existing term mentions
-        termMentionRepository.deleteTermMentions(outVertex.getId(), getAuthorizations());
-        termMentionUtils.removeHasDetectedEntityRelations(outVertex);
-        getGraph().flush();
+        if (textProperty == null) {
+            LOGGER.warn("Could not find text property for language: "+language);
+            return;
+        }
+
+        String text = IOUtils.toString(textProperty.getInputStream(), StandardCharsets.UTF_8);
+
+        NerUtils.removeTermMentions(outVertex, termMentionRepository, termMentionUtils, getGraph(), getAuthorizations());
+
+        if (StringUtils.isEmpty(text)) {
+            pushTextUpdated(data);
+            return;
+        }
 
         try {
             ExtractedEntities entities = ParseManager.extractAndResolve(getConfiguration(), language, text);
             if (entities != null) {
                 VisibilityJson tmVisibilityJson = BcSchema.VISIBILITY_JSON.getPropertyValue(outVertex);
 
-                addLocations(outVertex, textProperty.get(), tmVisibilityJson, entities);
-                addPersons(outVertex, textProperty.get(), tmVisibilityJson, entities);
-                addOrganizations(outVertex, textProperty.get(), tmVisibilityJson, entities);
-                addOtherEntities(outVertex, textProperty.get(), tmVisibilityJson, entities);
+                addLocations(outVertex, data.getProperty(), tmVisibilityJson, entities);
+                addPersons(outVertex, data.getProperty(), tmVisibilityJson, entities);
+                addOrganizations(outVertex, data.getProperty(), tmVisibilityJson, entities);
+                addOtherEntities(outVertex, data.getProperty(), tmVisibilityJson, entities);
                 getGraph().flush();
-
-                pushTextUpdated(data);
             } else {
                 LOGGER.debug("No entities extracted");
             }
         } catch (Exception e) {
             LOGGER.error("Error extracting entities: "+e.getMessage(), e);
         }
+
+        pushTextUpdated(data);
     }
 
     private List<Vertex> addLocations(Vertex outVertex, Property property, VisibilityJson visibilityJson, ExtractedEntities entities) {

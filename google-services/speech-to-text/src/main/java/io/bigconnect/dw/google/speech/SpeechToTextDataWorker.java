@@ -46,6 +46,7 @@ import com.google.inject.Inject;
 import com.mware.bigconnect.ffmpeg.AVMediaInfo;
 import com.mware.bigconnect.ffmpeg.AVUtils;
 import com.mware.bigconnect.ffmpeg.VideoFormat;
+import com.mware.core.bootstrap.InjectHelper;
 import com.mware.core.config.Configuration;
 import com.mware.core.ingest.dataworker.DataWorker;
 import com.mware.core.ingest.dataworker.DataWorkerData;
@@ -90,19 +91,13 @@ public class SpeechToTextDataWorker extends DataWorker {
     private final String bucketName;
 
     @Inject
-    public SpeechToTextDataWorker(
-            Configuration configuration,
-            Speech2TextOperationMonitorService monitorService
-    ) {
+    public SpeechToTextDataWorker(Configuration configuration) {
         this.bucketName = configuration.get(Speech2TextOperationMonitorService.CONFIG_GOOGLE_S2T_BUCKET_NAME, "");
 
         Preconditions.checkState(!StringUtils.isEmpty(bucketName),
                 "Please provide the " + Speech2TextOperationMonitorService.CONFIG_GOOGLE_S2T_BUCKET_NAME + " configuration property");
-    }
 
-    @Override
-    public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
-        super.prepare(workerPrepareData);
+        InjectHelper.inject(Speech2TextOperationMonitorService.class);
     }
 
     @Override

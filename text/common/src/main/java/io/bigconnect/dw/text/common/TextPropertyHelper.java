@@ -62,13 +62,7 @@ public class TextPropertyHelper {
                 }, properties)
         , null);
 
-        Optional<Property> textProperty = Optional.ofNullable(property);
-        if (!textProperty.isPresent()) {
-            LOGGER.debug("Could not find a TEXT property with language: %s", language);
-            return Optional.empty();
-        }
-
-        return textProperty;
+        return Optional.ofNullable(property);
     }
 
     public static String getTextLanguage(Property textProperty) {

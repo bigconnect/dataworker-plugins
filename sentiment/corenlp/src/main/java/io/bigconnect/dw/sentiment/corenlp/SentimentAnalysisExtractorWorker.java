@@ -61,6 +61,7 @@ import edu.stanford.nlp.sentiment.SentimentCoreAnnotations;
 import edu.stanford.nlp.trees.Tree;
 import edu.stanford.nlp.util.CoreMap;
 import io.bigconnect.dw.text.common.TextPropertyHelper;
+import io.bigconnect.dw.text.common.TextSchemaContribution;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -95,11 +96,14 @@ public class SentimentAnalysisExtractorWorker extends DataWorker {
         if (IgnoredMimeTypes.contains(BcSchema.MIME_TYPE.getFirstPropertyValue(element)))
             return false;
 
-        // if the RAW_LANGUAGE property is pushed on queue, it means the text was already extracted
-        // and we can only handle the detection if the language is English
         if (property.getName().equals(RawObjectSchema.RAW_LANGUAGE.getPropertyName())) {
+            // do entity extraction only if language is set
             String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
-            return "en".equals(language);
+            return !StringUtils.isEmpty(language);
+        }
+
+        if (property.getName().equals(TextSchemaContribution.TEXT_DIRTY.getPropertyName())) {
+            return TextSchemaContribution.TEXT_DIRTY.getPropertyValue(property);
         }
 
         return false;
@@ -107,20 +111,17 @@ public class SentimentAnalysisExtractorWorker extends DataWorker {
 
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
-        String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(data.getProperty());
-        // look for the TEXT property with the same language
-        Optional<Property> textProperty = TextPropertyHelper.getTextPropertyForLanguage(data.getElement(), language);
+        Vertex outVertex = (Vertex) refresh(data.getElement());
+        String language = RawObjectSchema.RAW_LANGUAGE.getFirstPropertyValue(outVertex);
+        Optional<Property> textProperty = TextPropertyHelper.getTextPropertyForLanguage(outVertex, language);
 
         if (!textProperty.isPresent()) {
+            LOGGER.warn("Could not find text property for language: "+language);
             return;
         }
 
         StreamingPropertyValue spv = BcSchema.TEXT.getPropertyValue(textProperty.get());
         String text = IOUtils.toString(spv.getInputStream(), StandardCharsets.UTF_8);
-        if (StringUtils.isEmpty(text)) {
-            LOGGER.warn("Found an empty TEXT property for language: %s", language);
-            return;
-        }
 
         String sentiment = getSentiment(text);
         ExistingElementMutation<Vertex> mutation = refresh(data.getElement()).prepareMutation();

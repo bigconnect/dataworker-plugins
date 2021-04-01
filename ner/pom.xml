@@ -19,6 +19,7 @@
         <module>spacy</module>
         <module>regex</module>
         <module>location-resolver</module>
+        <module>intellidockers</module>
     </modules>
 
     <dependencies>
