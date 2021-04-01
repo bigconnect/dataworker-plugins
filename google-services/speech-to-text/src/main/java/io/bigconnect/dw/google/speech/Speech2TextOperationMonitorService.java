@@ -48,6 +48,7 @@ import com.mware.core.lifecycle.LifeSupportService;
 import com.mware.core.model.clientapi.dto.VisibilityJson;
 import com.mware.core.model.lock.LockRepository;
 import com.mware.core.model.properties.BcSchema;
+import com.mware.core.model.properties.RawObjectSchema;
 import com.mware.core.model.properties.types.PropertyMetadata;
 import com.mware.core.model.role.GeAuthorizationRepository;
 import com.mware.core.model.workQueue.Priority;
@@ -119,28 +120,38 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
                         if (operationNameProp != null) {
                             final String operationName = operationNameProp.getValue().asObjectCopy().toString();
                             final TextValue language = (TextValue) operationNameProp.getMetadata().getValue("language");
-                            LOGGER.info("Polling operation %s", operationName);
+                            LOGGER.debug("Polling operation %s", operationName);
                             if (client.getOperation(operationName).getDone()) {
-                                LOGGER.info("Google operation %s finished", operationName);
+                                LOGGER.debug("Google operation %s finished", operationName);
 
-                                final String resultedText =
-                                        client.getOperation(operationName).getResponse().getValue().toStringUtf8();
+                                final String resultedText = client.getOperation(operationName).getResponse().getValue().toStringUtf8();
 
                                 PropertyMetadata propertyMetadata = new PropertyMetadata(
                                         new SystemUser(), new VisibilityJson(), Visibility.EMPTY
                                 );
                                 propertyMetadata.add(BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(), language, Visibility.EMPTY);
-                                BcSchema.TEXT.addPropertyValue(vertex, language.stringValue(),
+                                BcSchema.TEXT.addPropertyValue(
+                                        vertex,
+                                        language.stringValue(),
                                         DefaultStreamingPropertyValue.create(resultedText),
-                                        propertyMetadata.createMetadata(), Visibility.EMPTY, vertex.getAuthorizations());
+                                        propertyMetadata.createMetadata(), Visibility.EMPTY, vertex.getAuthorizations()
+                                );
+
+                                // add also the new language
+                                RawObjectSchema.RAW_LANGUAGE.addPropertyValue(vertex, language.stringValue(), language.stringValue(),
+                                        null, Visibility.EMPTY, vertex.getAuthorizations());
 
                                 // Cleanup
                                 GoogleSchemaContribution.OPERATION_NAME.removeProperty(vertex, AUTHORIZATIONS_ALL);
                                 graph.flush();
 
                                 workQueueRepository.pushGraphPropertyQueue(
-                                        vertex, language.stringValue(), BcSchema.TEXT.getPropertyName(),
-                                        null, null, Priority.HIGH,
+                                        vertex,
+                                        language.stringValue(),
+                                        RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
+                                        null,
+                                        null,
+                                        Priority.HIGH,
                                         ElementOrPropertyStatus.UPDATE,
                                         null
                                 );

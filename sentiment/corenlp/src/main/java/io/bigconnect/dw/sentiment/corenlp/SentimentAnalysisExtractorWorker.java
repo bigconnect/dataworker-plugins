@@ -49,6 +49,8 @@ import com.mware.core.util.BcLoggerFactory;
 import com.mware.ge.Element;
 import com.mware.ge.Property;
 import com.mware.ge.Vertex;
+import com.mware.ge.Visibility;
+import com.mware.ge.mutation.ElementMutation;
 import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.values.storable.StreamingPropertyValue;
 import com.mware.ge.values.storable.Values;
@@ -60,8 +62,6 @@ import edu.stanford.nlp.pipeline.StanfordCoreNLP;
 import edu.stanford.nlp.sentiment.SentimentCoreAnnotations;
 import edu.stanford.nlp.trees.Tree;
 import edu.stanford.nlp.util.CoreMap;
-import io.bigconnect.dw.text.common.TextPropertyHelper;
-import io.bigconnect.dw.text.common.TextSchemaContribution;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -69,7 +69,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 
 @Name("Stanford CoreNLP Sentiment Analysis")
@@ -102,26 +101,39 @@ public class SentimentAnalysisExtractorWorker extends DataWorker {
             return !StringUtils.isEmpty(language);
         }
 
-        if (property.getName().equals(TextSchemaContribution.TEXT_DIRTY.getPropertyName())) {
-            return TextSchemaContribution.TEXT_DIRTY.getPropertyValue(property);
-        }
-
         return false;
     }
 
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
-        Vertex outVertex = (Vertex) refresh(data.getElement());
-        String language = RawObjectSchema.RAW_LANGUAGE.getFirstPropertyValue(outVertex);
-        Optional<Property> textProperty = TextPropertyHelper.getTextPropertyForLanguage(outVertex, language);
+        String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(data.getProperty());
+        StreamingPropertyValue textProperty = BcSchema.TEXT.getPropertyValue(refresh(data.getElement()), data.getProperty().getKey());
 
-        if (!textProperty.isPresent()) {
-            LOGGER.warn("Could not find text property for language: "+language);
+        if (textProperty == null) {
+            LOGGER.warn("Could not find text property for language: " + language);
             return;
         }
 
-        StreamingPropertyValue spv = BcSchema.TEXT.getPropertyValue(textProperty.get());
-        String text = IOUtils.toString(spv.getInputStream(), StandardCharsets.UTF_8);
+        String text = IOUtils.toString(textProperty.getInputStream(), StandardCharsets.UTF_8);
+
+        ElementMutation m = refresh(data.getElement()).prepareMutation();
+        m.deleteProperty(RawObjectSchema.RAW_SENTIMENT.getPropertyName(), Visibility.EMPTY);
+        Element element = m.save(getAuthorizations());
+        getGraph().flush();
+
+        if (StringUtils.isEmpty(text)) {
+            getWorkQueueRepository().pushGraphPropertyQueue(
+                    element,
+                    "",
+                    RawObjectSchema.RAW_SENTIMENT.getPropertyName(),
+                    data.getWorkspaceId(),
+                    data.getVisibilitySource(),
+                    data.getPriority(),
+                    ElementOrPropertyStatus.DELETION,
+                    null);
+            pushTextUpdated(data);
+            return;
+        }
 
         String sentiment = getSentiment(text);
         ExistingElementMutation<Vertex> mutation = refresh(data.getElement()).prepareMutation();
@@ -159,7 +171,7 @@ public class SentimentAnalysisExtractorWorker extends DataWorker {
             weightedSentiment = -1;
         else {
             List<Integer> weightedSentiments = new ArrayList<>();
-            for (int i=0; i < sentiments.size(); i++) {
+            for (int i = 0; i < sentiments.size(); i++) {
                 int sent = sentiments.get(i);
                 int size = sizes.get(i);
                 weightedSentiments.add(sent * size);
