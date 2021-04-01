@@ -99,7 +99,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         if (property.getName().equals(RawObjectSchema.RAW_LANGUAGE.getPropertyName())) {
             // do entity extraction only if language is set
             String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
-            return !StringUtils.isEmpty(language);
+            return !StringUtils.isEmpty(language) && "ro".equals(language);
         }
 
         return false;
