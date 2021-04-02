@@ -111,32 +111,34 @@ public class EntityExtractionDataWorker extends DataWorker {
 
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
-        Vertex outVertex = (Vertex) refresh(data.getElement());
         String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(data.getProperty());
-        StreamingPropertyValue textProperty = BcSchema.TEXT.getPropertyValue(refresh(data.getElement()), data.getProperty().getKey());
+        Property textProperty = BcSchema.TEXT.getProperty(refresh(data.getElement()), data.getProperty().getKey());
+        StreamingPropertyValue textPropertyValue = BcSchema.TEXT.getPropertyValue(textProperty);
 
-        if (textProperty == null) {
+        if (textPropertyValue == null) {
             LOGGER.warn("Could not find text property for language: "+language);
             return;
         }
 
-        String text = IOUtils.toString(textProperty.getInputStream(), StandardCharsets.UTF_8);
+        String text = IOUtils.toString(textPropertyValue.getInputStream(), StandardCharsets.UTF_8);
 
         if (StringUtils.isEmpty(text)) {
             return;
         }
 
         try {
+            Vertex outVertex = (Vertex) refresh(data.getElement());
+
             NerUtils.removeTermMentions(outVertex, termMentionRepository, termMentionUtils, getGraph(), getAuthorizations());
             ExtractedEntities entities = ParseManager.extractAndResolve(getConfiguration(), language, text);
             if (entities != null) {
                 VisibilityJson tmVisibilityJson = new VisibilityJson();
                 tmVisibilityJson.setSource("");
 
-                addLocations(outVertex, data.getProperty(), tmVisibilityJson, entities);
-                addPersons(outVertex, data.getProperty(), tmVisibilityJson, entities);
-                addOrganizations(outVertex, data.getProperty(), tmVisibilityJson, entities);
-                addOtherEntities(outVertex, data.getProperty(), tmVisibilityJson, entities);
+                addLocations(outVertex, textProperty, tmVisibilityJson, entities);
+                addPersons(outVertex, textProperty, tmVisibilityJson, entities);
+                addOrganizations(outVertex, textProperty, tmVisibilityJson, entities);
+                addOtherEntities(outVertex, textProperty, tmVisibilityJson, entities);
                 getGraph().flush();
 
                 pushTextUpdated(data);
@@ -271,6 +273,7 @@ public class EntityExtractionDataWorker extends DataWorker {
                 resolveTermMention(outVertex, termMention, resolvedToVertex, SchemaConstants.CONCEPT_TYPE_PERSON, name);
                 getGraph().flush();
             }
+
             alreadyResolvedMentions.add(name);
         }
 
