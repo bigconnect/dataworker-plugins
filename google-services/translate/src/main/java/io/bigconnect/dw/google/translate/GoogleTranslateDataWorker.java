@@ -122,6 +122,7 @@ public class GoogleTranslateDataWorker extends DataWorker {
 
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
+        LOGGER.info("Preparing to translate...");
         Element element = refresh(data.getElement());
 
         List<Property> propertiesToTranslate = new ArrayList<>();
@@ -134,6 +135,8 @@ public class GoogleTranslateDataWorker extends DataWorker {
                     propertiesToTranslate.add(property);
             }
         }
+
+        LOGGER.info("Found texts to translate...");
 
         try (TranslationServiceClient googleClient = TranslationServiceClient.create()) {
             for (Property property : propertiesToTranslate) {
@@ -189,6 +192,8 @@ public class GoogleTranslateDataWorker extends DataWorker {
                             ElementOrPropertyStatus.UPDATE,
                             null
                     );
+
+                    LOGGER.info("Translated "+text.length()+" characters");
                 } catch (Exception ex) {
                     LOGGER.warn("Could not perform translation.", ex);
                 }
