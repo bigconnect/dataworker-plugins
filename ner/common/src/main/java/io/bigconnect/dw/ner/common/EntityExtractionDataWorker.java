@@ -122,14 +122,12 @@ public class EntityExtractionDataWorker extends DataWorker {
 
         String text = IOUtils.toString(textProperty.getInputStream(), StandardCharsets.UTF_8);
 
-        NerUtils.removeTermMentions(outVertex, termMentionRepository, termMentionUtils, getGraph(), getAuthorizations());
-
         if (StringUtils.isEmpty(text)) {
-            pushTextUpdated(data);
             return;
         }
 
         try {
+            NerUtils.removeTermMentions(outVertex, termMentionRepository, termMentionUtils, getGraph(), getAuthorizations());
             ExtractedEntities entities = ParseManager.extractAndResolve(getConfiguration(), language, text);
             if (entities != null) {
                 VisibilityJson tmVisibilityJson = BcSchema.VISIBILITY_JSON.getPropertyValue(outVertex);
@@ -139,14 +137,14 @@ public class EntityExtractionDataWorker extends DataWorker {
                 addOrganizations(outVertex, data.getProperty(), tmVisibilityJson, entities);
                 addOtherEntities(outVertex, data.getProperty(), tmVisibilityJson, entities);
                 getGraph().flush();
+
+                pushTextUpdated(data);
             } else {
                 LOGGER.debug("No entities extracted");
             }
         } catch (Exception e) {
             LOGGER.error("Error extracting entities: "+e.getMessage(), e);
         }
-
-        pushTextUpdated(data);
     }
 
     private List<Vertex> addLocations(Vertex outVertex, Property property, VisibilityJson visibilityJson, ExtractedEntities entities) {
