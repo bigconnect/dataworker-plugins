@@ -1,17 +1,19 @@
 package io.bigconnect.dw.tester;
 
+import com.mware.bigconnect.ffmpeg.VideoFormat;
 import com.mware.core.bootstrap.InjectHelper;
 import com.mware.core.cmdline.CommandLineTool;
 import com.mware.core.ingest.dataworker.DataWorkerMemoryTracer;
-import com.mware.core.model.properties.BcSchema;
+import com.mware.core.model.properties.MediaBcSchema;
+import com.mware.core.model.properties.RawObjectSchema;
 import com.mware.core.process.DataWorkerRunnerProcess;
 import com.mware.core.status.model.QueueStatus;
 import com.mware.core.status.model.Status;
 import com.mware.core.status.model.Status.CounterMetric;
 import com.mware.ge.Element;
-import io.bigconnect.dw.google.translate.GoogleTranslateSchemaContribution;
 import lombok.SneakyThrows;
 
+import java.io.FileInputStream;
 import java.util.Map;
 
 public class DataWorkerTester extends CommandLineTool {
@@ -26,17 +28,18 @@ public class DataWorkerTester extends CommandLineTool {
             Thread.sleep(500);
         }
 
-        Element doc1 = EntityCreator.build(graph, workQueueRepository)
-                .newDocument("Document 1", "The social media giant banned Mr Trump from its platform in January following riots by his supporters on the Capitol building in Washington.")
+        Element e = EntityCreator.build(graph, workQueueRepository)
+                .newVideo("video1", new FileInputStream("/home/flavius/public/dataworker-plugins/tester/input/test.mp4"))
+                .setProperty(MediaBcSchema.MEDIA_VIDEO_FORMAT.getPropertyName(), VideoFormat.MP4.name())
                 .push();
 
         waitForQueueEmpty();
         DataWorkerMemoryTracer.print(); DataWorkerMemoryTracer.clear();
 
         EntityCreator.build(graph, workQueueRepository)
-                .with(doc1)
-                .setProperty(GoogleTranslateSchemaContribution.GOOGLE_TRANSLATE_PROPERTY.getPropertyName(), Boolean.TRUE)
-                .push(GoogleTranslateSchemaContribution.GOOGLE_TRANSLATE_PROPERTY.getPropertyName(), "");
+                .with(e)
+                .setProperty(RawObjectSchema.RAW_LANGUAGE.getPropertyName(), "ro")
+                .push(RawObjectSchema.RAW_LANGUAGE.getPropertyName(), "");
 
         waitForQueueEmpty();
         DataWorkerMemoryTracer.print(); DataWorkerMemoryTracer.clear();

@@ -14,9 +14,12 @@ import com.mware.ge.values.storable.ByteArray;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.StreamingPropertyValue;
 import com.mware.ge.values.storable.Values;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.ZonedDateTime;
 
 public class EntityCreator {
@@ -40,6 +43,19 @@ public class EntityCreator {
         return this;
     }
 
+    public EntityCreator newVideo(String title, InputStream file) {
+        element = graph.prepareVertex(Visibility.EMPTY, SchemaConstants.CONCEPT_TYPE_VIDEO)
+                .save(authorizations);
+
+        setTitle(title);
+        try {
+            addRaw(IOUtils.toByteArray(file));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return this;
+    }
+    
     public EntityCreator newDocument(String title, String text) {
         element = graph.prepareVertex(Visibility.EMPTY, SchemaConstants.CONCEPT_TYPE_DOCUMENT)
                 .save(authorizations);
