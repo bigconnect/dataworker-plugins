@@ -192,7 +192,7 @@ public class GoogleTranslateDataWorker extends DataWorker {
                             null
                     );
 
-                    pushTextUpdated(data);
+                    getWebQueueRepository().pushTextUpdated(data.getElement().getId(), Priority.HIGH);
 
                     LOGGER.info("Translated "+text.length()+" characters");
                 } catch (Exception ex) {
