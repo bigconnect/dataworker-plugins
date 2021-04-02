@@ -91,21 +91,21 @@ public class SpeechToTextDataWorker extends DataWorker {
     private final String bucketName;
 
     @Inject
-    public SpeechToTextDataWorker(Configuration configuration) {
+    public SpeechToTextDataWorker(Configuration configuration, Speech2TextOperationMonitorService monitorService) {
         this.bucketName = configuration.get(Speech2TextOperationMonitorService.CONFIG_GOOGLE_S2T_BUCKET_NAME, "");
 
         Preconditions.checkState(!StringUtils.isEmpty(bucketName),
                 "Please provide the " + Speech2TextOperationMonitorService.CONFIG_GOOGLE_S2T_BUCKET_NAME + " configuration property");
-
-        InjectHelper.inject(Speech2TextOperationMonitorService.class);
     }
 
     @Override
     public boolean isHandled(Element element, Property property) {
         if (property != null && RawObjectSchema.RAW_LANGUAGE.getPropertyName().equals(property.getName())) {
-            final String videoFormat = MediaBcSchema.MEDIA_VIDEO_FORMAT.getPropertyValue(element);
-            return !StringUtils.isEmpty(videoFormat)
-                    && ArrayUtils.contains(ALLOWED_VIDEO_FORMATS, VideoFormat.valueOf(videoFormat));
+            if (StringUtils.isEmpty(property.getKey())) {
+                final String videoFormat = MediaBcSchema.MEDIA_VIDEO_FORMAT.getPropertyValue(element);
+                return !StringUtils.isEmpty(videoFormat)
+                        && ArrayUtils.contains(ALLOWED_VIDEO_FORMATS, VideoFormat.valueOf(videoFormat));
+            }
         }
 
         return false;

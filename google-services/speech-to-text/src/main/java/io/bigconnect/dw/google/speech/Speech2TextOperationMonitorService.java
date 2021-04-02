@@ -156,8 +156,7 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
                                         null
                                 );
 
-                                final String meta =
-                                        client.getOperation(operationName).getMetadata().getValue().toStringUtf8();
+                                final String meta = client.getOperation(operationName).getMetadata().getValue().toStringUtf8();
                                 if (!StringUtils.isEmpty(meta)) {
                                     String[] gcsUrl = meta.split("/");
                                     if (gcsUrl.length > 0) {
