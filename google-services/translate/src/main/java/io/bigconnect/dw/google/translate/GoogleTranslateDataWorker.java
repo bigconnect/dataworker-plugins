@@ -129,8 +129,8 @@ public class GoogleTranslateDataWorker extends DataWorker {
         // find first property different than target language
         for (Property property : BcSchema.TEXT.getProperties(element)) {
             String textLanguage = TextPropertyHelper.getTextLanguage(property);
-            if (!targetLanguage.equals(textLanguage)) {
-                boolean canTranslate = supportedLanguages.contains(textLanguage);
+            if (StringUtils.isEmpty(textLanguage) || !targetLanguage.equals(textLanguage)) {
+                boolean canTranslate = StringUtils.isEmpty(textLanguage) || supportedLanguages.contains(textLanguage);
                 if (canTranslate)
                     propertiesToTranslate.add(property);
             }
@@ -152,7 +152,6 @@ public class GoogleTranslateDataWorker extends DataWorker {
                     TranslateTextRequest req = TranslateTextRequest.newBuilder()
                             .setParent(locationName.toString())
                             .setMimeType("text/plain")
-                            .setSourceLanguageCode(sourceLanguage)
                             .setTargetLanguageCode(targetLanguage)
                             .addContents(text)
                             .build();
@@ -192,6 +191,8 @@ public class GoogleTranslateDataWorker extends DataWorker {
                             ElementOrPropertyStatus.UPDATE,
                             null
                     );
+
+                    pushTextUpdated(data);
 
                     LOGGER.info("Translated "+text.length()+" characters");
                 } catch (Exception ex) {
