@@ -130,7 +130,8 @@ public class EntityExtractionDataWorker extends DataWorker {
             NerUtils.removeTermMentions(outVertex, termMentionRepository, termMentionUtils, getGraph(), getAuthorizations());
             ExtractedEntities entities = ParseManager.extractAndResolve(getConfiguration(), language, text);
             if (entities != null) {
-                VisibilityJson tmVisibilityJson = BcSchema.VISIBILITY_JSON.getPropertyValue(outVertex);
+                VisibilityJson tmVisibilityJson = new VisibilityJson();
+                tmVisibilityJson.setSource("");
 
                 addLocations(outVertex, data.getProperty(), tmVisibilityJson, entities);
                 addPersons(outVertex, data.getProperty(), tmVisibilityJson, entities);
