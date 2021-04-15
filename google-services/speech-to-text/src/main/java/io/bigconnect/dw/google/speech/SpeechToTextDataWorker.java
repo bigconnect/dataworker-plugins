@@ -101,11 +101,9 @@ public class SpeechToTextDataWorker extends DataWorker {
     @Override
     public boolean isHandled(Element element, Property property) {
         if (property != null && RawObjectSchema.RAW_LANGUAGE.getPropertyName().equals(property.getName())) {
-            if (StringUtils.isEmpty(property.getKey())) {
-                final String videoFormat = MediaBcSchema.MEDIA_VIDEO_FORMAT.getPropertyValue(element);
-                return !StringUtils.isEmpty(videoFormat)
-                        && ArrayUtils.contains(ALLOWED_VIDEO_FORMATS, VideoFormat.valueOf(videoFormat));
-            }
+            final String videoFormat = MediaBcSchema.MEDIA_VIDEO_FORMAT.getPropertyValue(element);
+            return !StringUtils.isEmpty(videoFormat)
+                    && ArrayUtils.contains(ALLOWED_VIDEO_FORMATS, VideoFormat.valueOf(videoFormat));
         }
 
         return false;
