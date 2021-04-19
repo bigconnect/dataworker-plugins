@@ -52,23 +52,24 @@ import com.mware.core.model.properties.RawObjectSchema;
 import com.mware.core.model.properties.types.PropertyMetadata;
 import com.mware.core.model.role.GeAuthorizationRepository;
 import com.mware.core.model.workQueue.Priority;
+import com.mware.core.model.workQueue.WebQueueRepository;
 import com.mware.core.model.workQueue.WorkQueueRepository;
 import com.mware.core.user.SystemUser;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
 import com.mware.core.util.PeriodicBackgroundService;
 import com.mware.ge.*;
-import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.query.QueryResultsIterable;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.TextValue;
-import com.mware.ge.values.storable.Values;
 import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
 import io.bigconnect.dw.google.common.schema.GoogleSchemaContribution;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
+
+import static io.bigconnect.dw.google.speech.Speech2TextSchemaContribution.GOOGLE_S2T_PROGRESS_PROPERTY;
 
 @Singleton
 public class Speech2TextOperationMonitorService extends PeriodicBackgroundService {
@@ -79,6 +80,7 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
     static final String CONFIG_GOOGLE_S2T_BUCKET_NAME = "google.s2t.bucket.name";
 
     private WorkQueueRepository workQueueRepository;
+    private WebQueueRepository webQueueRepository;
     private final Graph graph;
     private final String bucketName;
 
@@ -86,12 +88,14 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
     public Speech2TextOperationMonitorService(
             LockRepository lockRepository,
             WorkQueueRepository workQueueRepository,
+            WebQueueRepository webQueueRepository,
             Graph graph,
             Configuration configuration,
             LifeSupportService lifeSupportService
     ) {
         super(lockRepository);
         this.workQueueRepository = workQueueRepository;
+        this.webQueueRepository = webQueueRepository;
         this.graph = graph;
         this.bucketName = configuration.get(CONFIG_GOOGLE_S2T_BUCKET_NAME, "");
 
@@ -102,8 +106,6 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
 
     @Override
     protected void run() {
-        LOGGER.debug("Checking Google responses");
-
         try (QueryResultsIterable<Vertex> pendingVertices = graph.query(AUTHORIZATIONS_ALL)
                 .has(GoogleSchemaContribution.OPERATION_NAME.getPropertyName())
                 .vertices()) {
@@ -140,6 +142,10 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
                                 // add also the new language
                                 RawObjectSchema.RAW_LANGUAGE.addPropertyValue(vertex, language.stringValue(), language.stringValue(),
                                         null, Visibility.EMPTY, vertex.getAuthorizations());
+
+                                webQueueRepository.pushTextUpdated(vertex.getId(), Priority.HIGH);
+
+                                GOOGLE_S2T_PROGRESS_PROPERTY.setProperty(vertex, Boolean.FALSE, Visibility.EMPTY, vertex.getAuthorizations());
 
                                 // Cleanup
                                 GoogleSchemaContribution.OPERATION_NAME.removeProperty(vertex, AUTHORIZATIONS_ALL);

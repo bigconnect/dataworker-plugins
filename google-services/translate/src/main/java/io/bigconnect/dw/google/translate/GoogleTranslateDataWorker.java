@@ -109,15 +109,12 @@ public class GoogleTranslateDataWorker extends DataWorker {
             return false;
         }
 
-        boolean googleTranslate = GOOGLE_TRANSLATE_PROPERTY.getPropertyName().equals(property.getName());
-        if (!googleTranslate)
-            return false;
-
-        if (property.getValue() == null || !(property.getValue() instanceof BooleanValue)) {
-            return false;
+        if (GOOGLE_TRANSLATE_PROPERTY.getPropertyName().equals(property.getName())) {
+            Boolean performTranslate = GOOGLE_TRANSLATE_PROPERTY.getPropertyValue(element, false);
+            return Boolean.TRUE.equals(performTranslate);
         }
 
-        return ((BooleanValue) property.getValue()).booleanValue();
+        return false;
     }
 
     @Override
@@ -136,7 +133,7 @@ public class GoogleTranslateDataWorker extends DataWorker {
             }
         }
 
-        LOGGER.info("Found texts to translate...");
+        GOOGLE_TRANSLATE_PROPERTY.setProperty(element, Boolean.FALSE, Visibility.EMPTY, element.getAuthorizations());
 
         try (TranslationServiceClient googleClient = TranslationServiceClient.create()) {
             for (Property property : propertiesToTranslate) {

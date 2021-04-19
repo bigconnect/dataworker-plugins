@@ -113,6 +113,10 @@ public class EntityExtractionDataWorker extends DataWorker {
     public void execute(InputStream in, DataWorkerData data) throws Exception {
         String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(data.getProperty());
         Property textProperty = BcSchema.TEXT.getProperty(refresh(data.getElement()), data.getProperty().getKey());
+        if (textProperty == null) {
+            return;
+        }
+
         StreamingPropertyValue textPropertyValue = BcSchema.TEXT.getPropertyValue(textProperty);
 
         if (textPropertyValue == null) {

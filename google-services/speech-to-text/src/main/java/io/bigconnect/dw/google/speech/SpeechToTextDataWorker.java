@@ -45,12 +45,11 @@ import com.google.cloud.storage.StorageOptions;
 import com.google.inject.Inject;
 import com.mware.bigconnect.ffmpeg.AVMediaInfo;
 import com.mware.bigconnect.ffmpeg.AVUtils;
+import com.mware.bigconnect.ffmpeg.AudioFormat;
 import com.mware.bigconnect.ffmpeg.VideoFormat;
-import com.mware.core.bootstrap.InjectHelper;
 import com.mware.core.config.Configuration;
 import com.mware.core.ingest.dataworker.DataWorker;
 import com.mware.core.ingest.dataworker.DataWorkerData;
-import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
 import com.mware.core.model.Description;
 import com.mware.core.model.Name;
 import com.mware.core.model.properties.BcSchema;
@@ -81,29 +80,49 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.UUID;
 
+import static io.bigconnect.dw.google.speech.Speech2TextSchemaContribution.GOOGLE_S2T_PROGRESS_PROPERTY;
+import static io.bigconnect.dw.google.speech.Speech2TextSchemaContribution.GOOGLE_S2T_PROPERTY;
+
 @Name("Google Speech2Text Data Worker")
 @Description("Performs Speech2Text on Audio/Video files using Google Cloud Services")
 public class SpeechToTextDataWorker extends DataWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(SpeechToTextDataWorker.class);
-
     private static final VideoFormat[] ALLOWED_VIDEO_FORMATS = new VideoFormat[] { VideoFormat.MP4 };
-
+    private static final AudioFormat[] ALLOWED_AUDIO_FORMATS = new AudioFormat[] { AudioFormat.MP4 };
     private final String bucketName;
 
     @Inject
     public SpeechToTextDataWorker(Configuration configuration, Speech2TextOperationMonitorService monitorService) {
         this.bucketName = configuration.get(Speech2TextOperationMonitorService.CONFIG_GOOGLE_S2T_BUCKET_NAME, "");
-
         Preconditions.checkState(!StringUtils.isEmpty(bucketName),
                 "Please provide the " + Speech2TextOperationMonitorService.CONFIG_GOOGLE_S2T_BUCKET_NAME + " configuration property");
     }
 
     @Override
     public boolean isHandled(Element element, Property property) {
-        if (property != null && RawObjectSchema.RAW_LANGUAGE.getPropertyName().equals(property.getName())) {
-            final String videoFormat = MediaBcSchema.MEDIA_VIDEO_FORMAT.getPropertyValue(element);
-            return !StringUtils.isEmpty(videoFormat)
-                    && ArrayUtils.contains(ALLOWED_VIDEO_FORMATS, VideoFormat.valueOf(videoFormat));
+        if (property == null) {
+            return false;
+        }
+
+        if (GOOGLE_S2T_PROPERTY.getPropertyName().equals(property.getName())) {
+            Boolean performS2T = Speech2TextSchemaContribution.GOOGLE_S2T_PROPERTY.getPropertyValue(element, false);
+            if (Boolean.TRUE.equals(performS2T)) {
+                // check to see if we have an already in progress operation
+                boolean alreadyInProgress = GOOGLE_S2T_PROGRESS_PROPERTY.getPropertyValue(element, false);
+                if (alreadyInProgress) {
+                    LOGGER.warn("Speech2Text alrady in progress for element: "+element.getId());
+                    return false;
+                }
+
+                // check language and videoformat
+                final String language = RawObjectSchema.RAW_LANGUAGE.getFirstPropertyValue(element);
+                final String videoFormat = MediaBcSchema.MEDIA_VIDEO_FORMAT.getPropertyValue(element);
+                final String audioFormat = MediaBcSchema.MEDIA_AUDIO_FORMAT.getPropertyValue(element);
+                boolean hasVideo = !StringUtils.isEmpty(videoFormat) && ArrayUtils.contains(ALLOWED_VIDEO_FORMATS, VideoFormat.valueOf(videoFormat));
+                boolean hasAudio = !StringUtils.isEmpty(audioFormat) && ArrayUtils.contains(ALLOWED_AUDIO_FORMATS, VideoFormat.valueOf(audioFormat));
+
+                return !StringUtils.isEmpty(language) && (hasVideo || hasAudio);
+            }
         }
 
         return false;
@@ -123,6 +142,10 @@ public class SpeechToTextDataWorker extends DataWorker {
         if (StringUtils.isEmpty(language)) {
             return;
         }
+
+        GOOGLE_S2T_PROPERTY.setProperty(vertex, Boolean.FALSE, Visibility.EMPTY, vertex.getAuthorizations());
+        GOOGLE_S2T_PROGRESS_PROPERTY.setProperty(vertex, Boolean.TRUE, Visibility.EMPTY, vertex.getAuthorizations());
+        getGraph().flush();
 
         // Convert to FLAC audio
         Path audioPath = createFlac(vertex, tempFolder);
@@ -154,6 +177,9 @@ public class SpeechToTextDataWorker extends DataWorker {
             GoogleSchemaContribution.OPERATION_NAME
                     .setProperty(vertex, response.getName(), metadata,
                             Visibility.EMPTY, getAuthorizations());
+
+            getGraph().flush();
+
             LOGGER.info("Submitted Google response operation with id %s", response.getName());
         }
     }
