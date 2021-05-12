@@ -53,14 +53,13 @@ import com.mware.core.model.properties.types.PropertyMetadata;
 import com.mware.core.model.workQueue.Priority;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
-import com.mware.ge.Element;
-import com.mware.ge.Metadata;
-import com.mware.ge.Property;
-import com.mware.ge.Visibility;
+import com.mware.ge.*;
+import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.BooleanValue;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.StreamingPropertyValue;
+import com.mware.ge.values.storable.Values;
 import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
 import io.bigconnect.dw.text.common.TextPropertyHelper;
 import org.apache.commons.io.IOUtils;
@@ -132,6 +131,12 @@ public class GoogleTranslateDataWorker extends DataWorker {
                 StreamingPropertyValue textSpv = BcSchema.TEXT.getPropertyValue(property);
                 if (textSpv != null) {
                     textLanguage = languageDetector.detectLanguage(textSpv.readToString()).or("");
+                    if (!StringUtils.isEmpty(textLanguage)) {
+                        ExistingElementMutation<Vertex> m = element.prepareMutation();
+                        m.setPropertyMetadata(property, BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
+                                Values.stringValue(textLanguage), Visibility.EMPTY);
+                        element = m.save(getAuthorizations());
+                    }
                 }
             }
             if (StringUtils.isEmpty(textLanguage) || !targetLanguage.equals(textLanguage)) {
