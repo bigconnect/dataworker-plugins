@@ -37,6 +37,7 @@
 package io.bigconnect.dw.google.translate;
 
 import com.google.cloud.translate.v3beta1.*;
+import com.google.common.base.Optional;
 import com.google.inject.Singleton;
 import com.mware.core.ingest.dataworker.DataWorker;
 import com.mware.core.ingest.dataworker.DataWorkerData;
@@ -70,7 +71,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -86,6 +86,7 @@ public class GoogleTranslateDataWorker extends DataWorker {
     private Set<String> supportedLanguages;
     private String targetLanguage;
     private LocationName locationName;
+    private LanguageDetectorUtil languageDetector;
 
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
@@ -101,6 +102,7 @@ public class GoogleTranslateDataWorker extends DataWorker {
                 "No translations supported for language: " + targetLanguage);
 
         locationName = LocationName.of(GoogleCredentialUtils.getProjectId(), "global");
+        this.languageDetector = new LanguageDetectorUtil();
     }
 
     @Override
@@ -126,6 +128,12 @@ public class GoogleTranslateDataWorker extends DataWorker {
         // find first property different than target language
         for (Property property : BcSchema.TEXT.getProperties(element)) {
             String textLanguage = TextPropertyHelper.getTextLanguage(property);
+            if (StringUtils.isEmpty(textLanguage)) {
+                StreamingPropertyValue textSpv = BcSchema.TEXT.getPropertyValue(property);
+                if (textSpv != null) {
+                    textLanguage = languageDetector.detectLanguage(textSpv.readToString()).or("");
+                }
+            }
             if (StringUtils.isEmpty(textLanguage) || !targetLanguage.equals(textLanguage)) {
                 boolean canTranslate = StringUtils.isEmpty(textLanguage) || supportedLanguages.contains(textLanguage);
                 if (canTranslate)
