@@ -28,6 +28,11 @@
             <artifactId>google-cloud-translate</artifactId>
             <version>${cloud.translate.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.optimaize.languagedetector</groupId>
+            <artifactId>language-detector</artifactId>
+            <version>0.6</version>
+        </dependency>
     </dependencies>
 
 </project>

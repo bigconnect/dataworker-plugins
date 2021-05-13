@@ -37,6 +37,7 @@
 package io.bigconnect.dw.google.translate;
 
 import com.google.cloud.translate.v3beta1.*;
+import com.google.common.base.Optional;
 import com.google.inject.Singleton;
 import com.mware.core.ingest.dataworker.DataWorker;
 import com.mware.core.ingest.dataworker.DataWorkerData;
@@ -52,14 +53,13 @@ import com.mware.core.model.properties.types.PropertyMetadata;
 import com.mware.core.model.workQueue.Priority;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
-import com.mware.ge.Element;
-import com.mware.ge.Metadata;
-import com.mware.ge.Property;
-import com.mware.ge.Visibility;
+import com.mware.ge.*;
+import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.BooleanValue;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.StreamingPropertyValue;
+import com.mware.ge.values.storable.Values;
 import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
 import io.bigconnect.dw.text.common.TextPropertyHelper;
 import org.apache.commons.io.IOUtils;
@@ -70,7 +70,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -86,6 +85,7 @@ public class GoogleTranslateDataWorker extends DataWorker {
     private Set<String> supportedLanguages;
     private String targetLanguage;
     private LocationName locationName;
+    private LanguageDetectorUtil languageDetector;
 
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
@@ -101,6 +101,7 @@ public class GoogleTranslateDataWorker extends DataWorker {
                 "No translations supported for language: " + targetLanguage);
 
         locationName = LocationName.of(GoogleCredentialUtils.getProjectId(), "global");
+        this.languageDetector = new LanguageDetectorUtil();
     }
 
     @Override
@@ -126,6 +127,18 @@ public class GoogleTranslateDataWorker extends DataWorker {
         // find first property different than target language
         for (Property property : BcSchema.TEXT.getProperties(element)) {
             String textLanguage = TextPropertyHelper.getTextLanguage(property);
+            if (StringUtils.isEmpty(textLanguage)) {
+                StreamingPropertyValue textSpv = BcSchema.TEXT.getPropertyValue(property);
+                if (textSpv != null) {
+                    textLanguage = languageDetector.detectLanguage(textSpv.readToString()).or("");
+                    if (!StringUtils.isEmpty(textLanguage)) {
+                        ExistingElementMutation<Vertex> m = element.prepareMutation();
+                        m.setPropertyMetadata(property, BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
+                                Values.stringValue(textLanguage), Visibility.EMPTY);
+                        element = m.save(getAuthorizations());
+                    }
+                }
+            }
             if (StringUtils.isEmpty(textLanguage) || !targetLanguage.equals(textLanguage)) {
                 boolean canTranslate = StringUtils.isEmpty(textLanguage) || supportedLanguages.contains(textLanguage);
                 if (canTranslate)
