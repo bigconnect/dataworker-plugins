@@ -19,6 +19,7 @@ public class LanguageDetectorUtil {
         List<LanguageProfile> languageProfiles = new LanguageProfileReader().readAllBuiltIn();
         languageDetector = LanguageDetectorBuilder.create(NgramExtractors.standard())
                 .withProfiles(languageProfiles)
+                .minimalConfidence(0.75d)
                 .build();
     }
 
