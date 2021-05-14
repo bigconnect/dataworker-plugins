@@ -146,7 +146,12 @@ public class GoogleTranslateDataWorker extends DataWorker {
             }
         }
 
-        GOOGLE_TRANSLATE_PROPERTY.setProperty(element, Boolean.FALSE, Visibility.EMPTY, element.getAuthorizations());
+        if (propertiesToTranslate.isEmpty()) {
+            gTranslateFalse(element);
+            return;
+        }
+
+        boolean retryTranslation = false;
 
         try (TranslationServiceClient googleClient = TranslationServiceClient.create()) {
             for (Property property : propertiesToTranslate) {
@@ -203,15 +208,37 @@ public class GoogleTranslateDataWorker extends DataWorker {
                     );
 
                     getWebQueueRepository().pushTextUpdated(data.getElement().getId(), Priority.HIGH);
-
-                    LOGGER.info("Translated "+text.length()+" characters");
+                    logElement(element, sourceLanguage, text);
                 } catch (Exception ex) {
                     LOGGER.warn("Could not perform translation.", ex);
+                    retryTranslation = true;
+                }
+
+                if (!retryTranslation) {
+                    gTranslateFalse(element);
                 }
             }
         } catch (Exception ex) {
             LOGGER.warn("Could not create translation client.", ex);
         }
+    }
+
+    private void logElement(Element element, String sourceLanguage, String text) {
+        StringBuilder sb = new StringBuilder();
+        sb
+                .append('\n')
+                .append(element.getPropertyValue("title")).append("\t")
+                .append(element.getPropertyValue("source")).append('\t')
+                .append(element.getPropertyValue("createdDate")).append('\t')
+                .append(sourceLanguage).append('\t')
+                .append(text.length()).append('\n');
+
+        LOGGER.info(sb.toString());
+    }
+
+    private void gTranslateFalse(Element element) {
+        GOOGLE_TRANSLATE_PROPERTY.setProperty(element, Boolean.FALSE, Visibility.EMPTY, element.getAuthorizations());
+        getGraph().flush();
     }
 
     public Set<String> getSupportedTranslations() throws IOException {
