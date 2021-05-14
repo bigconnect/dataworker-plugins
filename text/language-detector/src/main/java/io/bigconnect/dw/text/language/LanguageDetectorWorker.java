@@ -83,18 +83,15 @@ public class LanguageDetectorWorker extends DataWorker {
         }
 
         // if the text was changed
-        if (BcSchema.TEXT.getPropertyName().equals(property.getName())) {
-            return true;
-        }
-
-        return false;
+        return BcSchema.TEXT.getPropertyName().equals(property.getName());
     }
 
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
         String text = IOUtils.toString(in, StandardCharsets.UTF_8);
-        if (StringUtils.isEmpty(text))
+        if (StringUtils.isEmpty(text)) {
             return;
+        }
 
         Optional<String> language = languageDetector.detectLanguage(text);
         if (language.isPresent()) {
