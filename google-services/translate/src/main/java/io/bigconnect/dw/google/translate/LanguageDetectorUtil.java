@@ -9,6 +9,7 @@ import com.optimaize.langdetect.profiles.LanguageProfileReader;
 import com.optimaize.langdetect.text.CommonTextObjectFactories;
 import com.optimaize.langdetect.text.TextObject;
 import com.optimaize.langdetect.text.TextObjectFactory;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 
@@ -23,6 +24,9 @@ public class LanguageDetectorUtil {
     }
 
     synchronized Optional<String> detectLanguage(String text) {
+        if (StringUtils.isEmpty(text))
+            return Optional.absent();
+
         TextObjectFactory textObjectFactory = CommonTextObjectFactories.forDetectingOnLargeText();
         TextObject textObject = textObjectFactory.forText(text);
         Optional<LdLocale> lang = languageDetector.detect(textObject);
