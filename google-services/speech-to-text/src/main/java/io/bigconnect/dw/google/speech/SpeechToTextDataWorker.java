@@ -216,6 +216,7 @@ public class SpeechToTextDataWorker extends DataWorker {
 
         private int sampleRate;
         private int channels;
+        private double duration;
 
         AudioInfo(String filePath) {
             initialize(filePath);
@@ -228,6 +229,7 @@ public class SpeechToTextDataWorker extends DataWorker {
             if (probe != null && !probe.getStreams().isEmpty()) {
                 this.sampleRate = probe.getStreams().get(0).sample_rate;
                 this.channels = probe.getStreams().get(0).channels;
+                this.duration = probe.getStreams().get(0).duration;
             }
         }
 

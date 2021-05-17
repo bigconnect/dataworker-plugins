@@ -12,10 +12,12 @@ import java.util.EnumSet;
 
 public class GoogleTranslateSchemaContribution implements SchemaContribution {
     public static final BooleanSingleValueBcProperty GOOGLE_TRANSLATE_PROPERTY = new BooleanSingleValueBcProperty("GTranslate");
+    public static final BooleanSingleValueBcProperty GOOGLE_TRANSLATED_PROPERTY = new BooleanSingleValueBcProperty("GTranslated");
 
     @Override
     public boolean patchApplied(SchemaFactory schemaFactory) {
-        return schemaFactory.getProperty(GOOGLE_TRANSLATE_PROPERTY.getPropertyName()) != null;
+        return schemaFactory.getProperty(GOOGLE_TRANSLATE_PROPERTY.getPropertyName()) != null &&
+                schemaFactory.getProperty(GOOGLE_TRANSLATED_PROPERTY.getPropertyName()) != null;
     }
 
     @Override
@@ -23,6 +25,14 @@ public class GoogleTranslateSchemaContribution implements SchemaContribution {
         schemaFactory.newConceptProperty()
                 .concepts(schemaFactory.getConcept(SchemaConstants.CONCEPT_TYPE_THING))
                 .name(GOOGLE_TRANSLATE_PROPERTY.getPropertyName())
+                .type(PropertyType.BOOLEAN)
+                .textIndexHints(EnumSet.of(TextIndexHint.EXACT_MATCH))
+                .userVisible(false)
+                .save();
+
+        schemaFactory.newConceptProperty()
+                .concepts(schemaFactory.getConcept(SchemaConstants.CONCEPT_TYPE_THING))
+                .name(GOOGLE_TRANSLATED_PROPERTY.getPropertyName())
                 .type(PropertyType.BOOLEAN)
                 .textIndexHints(EnumSet.of(TextIndexHint.EXACT_MATCH))
                 .userVisible(false)

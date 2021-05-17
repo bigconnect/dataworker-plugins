@@ -42,6 +42,7 @@ import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageOptions;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.google.longrunning.Operation;
 import com.google.longrunning.OperationsClient;
 import com.mware.core.config.Configuration;
 import com.mware.core.ingest.dataworker.ElementOrPropertyStatus;
@@ -49,6 +50,7 @@ import com.mware.core.lifecycle.LifeSupportService;
 import com.mware.core.model.clientapi.dto.VisibilityJson;
 import com.mware.core.model.lock.LockRepository;
 import com.mware.core.model.properties.BcSchema;
+import com.mware.core.model.properties.MediaBcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
 import com.mware.core.model.properties.types.PropertyMetadata;
 import com.mware.core.model.role.GeAuthorizationRepository;
@@ -64,12 +66,15 @@ import com.mware.ge.query.QueryResultsIterable;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.TextValue;
+import com.mware.ge.values.storable.Value;
 import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
 import io.bigconnect.dw.google.common.schema.GoogleSchemaContribution;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
 
+import static io.bigconnect.dw.google.common.schema.GoogleSchemaContribution.OPERATION_NAME;
+import static io.bigconnect.dw.google.speech.Speech2TextSchemaContribution.GOOGLE_S2T_DONE_PROPERTY;
 import static io.bigconnect.dw.google.speech.Speech2TextSchemaContribution.GOOGLE_S2T_PROGRESS_PROPERTY;
 
 @Singleton
@@ -108,75 +113,80 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
     @Override
     protected void run() {
         try (QueryResultsIterable<Vertex> pendingVertices = graph.query(AUTHORIZATIONS_ALL)
-                .has(GoogleSchemaContribution.OPERATION_NAME.getPropertyName())
+                .has(OPERATION_NAME.getPropertyName())
                 .vertices()) {
             LOGGER.info("Found %s Google responses still pending", pendingVertices.getTotalHits());
 
             if (pendingVertices.getTotalHits() > 0) {
                 try (SpeechClient speechClient = SpeechClient.create()) {
-                    final OperationsClient client = speechClient.getOperationsClient();
-                    final Storage storage = StorageOptions.newBuilder().setProjectId(GoogleCredentialUtils.getProjectId()).build().getService();
+                    try (OperationsClient client = speechClient.getOperationsClient()) {
+                        final Storage storage = StorageOptions.newBuilder().setProjectId(GoogleCredentialUtils.getProjectId()).build().getService();
 
-                    pendingVertices.iterator().forEachRemaining(vertex -> {
-                        final Property operationNameProp = GoogleSchemaContribution.OPERATION_NAME.getProperty(vertex);
+                        pendingVertices.iterator().forEachRemaining(vertex -> {
+                            final Property operationNameProp = OPERATION_NAME.getProperty(vertex);
 
-                        if (operationNameProp != null) {
-                            final String operationName = operationNameProp.getValue().asObjectCopy().toString();
-                            final TextValue language = (TextValue) operationNameProp.getMetadata().getValue("language");
-                            LOGGER.debug("Polling operation %s", operationName);
-                            try {
-                                if (client.getOperation(operationName).getDone()) {
-                                    LOGGER.debug("Google operation %s finished", operationName);
+                            if (operationNameProp != null) {
+                                final String operationName = operationNameProp.getValue().asObjectCopy().toString();
+                                final TextValue language = (TextValue) operationNameProp.getMetadata().getValue("language");
+                                LOGGER.debug("Polling operation %s", operationName);
+                                try {
+                                    Operation operation = client.getOperation(operationName);
+                                    if (operation.getDone()) {
+                                        LOGGER.debug("Google operation %s finished", operationName);
 
-                                    final String resultedText = client.getOperation(operationName).getResponse().getValue().toStringUtf8();
+                                        final String resultedText = operation.getResponse().getValue().toStringUtf8();
 
-                                    PropertyMetadata propertyMetadata = new PropertyMetadata(
-                                            new SystemUser(), new VisibilityJson(), Visibility.EMPTY
-                                    );
-                                    propertyMetadata.add(BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(), language, Visibility.EMPTY);
-                                    BcSchema.TEXT.addPropertyValue(
-                                            vertex,
-                                            language.stringValue(),
-                                            DefaultStreamingPropertyValue.create(resultedText),
-                                            propertyMetadata.createMetadata(), Visibility.EMPTY, vertex.getAuthorizations()
-                                    );
+                                        PropertyMetadata propertyMetadata = new PropertyMetadata(
+                                                new SystemUser(), new VisibilityJson(), Visibility.EMPTY
+                                        );
+                                        propertyMetadata.add(BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(), language, Visibility.EMPTY);
+                                        BcSchema.TEXT.addPropertyValue(
+                                                vertex,
+                                                language.stringValue(),
+                                                DefaultStreamingPropertyValue.create(resultedText),
+                                                propertyMetadata.createMetadata(), Visibility.EMPTY, vertex.getAuthorizations()
+                                        );
 
-                                    // add also the new language
-                                    RawObjectSchema.RAW_LANGUAGE.addPropertyValue(vertex, language.stringValue(), language.stringValue(),
-                                            null, Visibility.EMPTY, vertex.getAuthorizations());
+                                        // add also the new language
+                                        RawObjectSchema.RAW_LANGUAGE.addPropertyValue(vertex, language.stringValue(), language.stringValue(),
+                                                null, Visibility.EMPTY, vertex.getAuthorizations());
 
-                                    webQueueRepository.pushTextUpdated(vertex.getId(), Priority.HIGH);
+                                        webQueueRepository.pushTextUpdated(vertex.getId(), Priority.HIGH);
 
-                                    GOOGLE_S2T_PROGRESS_PROPERTY.setProperty(vertex, Boolean.FALSE, Visibility.EMPTY, vertex.getAuthorizations());
+                                        GOOGLE_S2T_PROGRESS_PROPERTY.setProperty(vertex, Boolean.FALSE, Visibility.EMPTY, vertex.getAuthorizations());
+                                        GOOGLE_S2T_DONE_PROPERTY.setProperty(vertex, Boolean.TRUE, Visibility.EMPTY, vertex.getAuthorizations());
+                                        OPERATION_NAME.removeProperty(vertex, AUTHORIZATIONS_ALL);
 
-                                    // Cleanup
-                                    GoogleSchemaContribution.OPERATION_NAME.removeProperty(vertex, AUTHORIZATIONS_ALL);
-                                    graph.flush();
+                                        // Cleanup
+                                        graph.flush();
 
-                                    workQueueRepository.pushGraphPropertyQueue(
-                                            vertex,
-                                            language.stringValue(),
-                                            RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
-                                            null,
-                                            null,
-                                            Priority.HIGH,
-                                            ElementOrPropertyStatus.UPDATE,
-                                            null
-                                    );
+                                        logElement(vertex);
 
-                                    final String meta = client.getOperation(operationName).getMetadata().getValue().toStringUtf8();
-                                    if (!StringUtils.isEmpty(meta)) {
-                                        String[] gcsUrl = meta.split("/");
-                                        if (gcsUrl.length > 0) {
-                                            storage.delete(bucketName, gcsUrl[gcsUrl.length - 1]);
+                                        workQueueRepository.pushGraphPropertyQueue(
+                                                vertex,
+                                                language.stringValue(),
+                                                RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
+                                                null,
+                                                null,
+                                                Priority.HIGH,
+                                                ElementOrPropertyStatus.UPDATE,
+                                                null
+                                        );
+
+                                        final String meta = client.getOperation(operationName).getMetadata().getValue().toStringUtf8();
+                                        if (!StringUtils.isEmpty(meta)) {
+                                            String[] gcsUrl = meta.split("/");
+                                            if (gcsUrl.length > 0) {
+                                                storage.delete(bucketName, gcsUrl[gcsUrl.length - 1]);
+                                            }
                                         }
                                     }
+                                } catch (ApiException ex) {
+                                    LOGGER.error("There was an error while polling Google responses with message: %s", ex.getMessage());
                                 }
-                            } catch (ApiException ex) {
-                                LOGGER.error("There was an error while polling Google responses with message: %s", ex.getMessage());
                             }
-                        }
-                    });
+                        });
+                    }
                 } catch (IOException e) {
                     LOGGER.error("There was an error while polling Google responses with message: %s", e.getMessage());
                     e.printStackTrace();
@@ -186,6 +196,23 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
             LOGGER.error("There was an error while closing elastic iterator with message: %s", ex.getMessage());
             ex.printStackTrace();
         }
+    }
+
+    private void logElement(Element element) {
+        final String SEPARATOR = "|$";
+        Vertex v = (Vertex) element;
+        Value duration = v.getPropertyValue(MediaBcSchema.MEDIA_DURATION.getPropertyName());
+
+        StringBuilder sb = new StringBuilder();
+        sb
+                .append('\n')
+                .append("gS2TLog_4874450843").append(SEPARATOR)
+                .append(v.getId()).append(SEPARATOR)
+                .append(duration != null ? duration.prettyPrint() : 0).append(SEPARATOR)
+                .append(v.getPropertyValue("createdDate")).append(SEPARATOR)
+                .append(v.getTimestamp());
+
+        LOGGER.warn(sb.toString());
     }
 
     @Override
