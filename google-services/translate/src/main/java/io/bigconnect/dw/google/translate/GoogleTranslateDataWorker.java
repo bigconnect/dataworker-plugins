@@ -222,20 +222,20 @@ public class GoogleTranslateDataWorker extends DataWorker {
                     GOOGLE_TRANSLATED_PROPERTY.setProperty(element, Boolean.TRUE, Visibility.EMPTY, element.getAuthorizations());
                     getGraph().flush();
                 } catch (Exception ex) {
-                    if (ex instanceof ResourceExhaustedException) {
-                        Date startDate = new Date();
-                        Date endDate = new Date();
-                        DateUtils.setHours(endDate, 23);
-                        DateUtils.setMinutes(endDate, 59);
-                        String ddMM = new SimpleDateFormat("dd/MM").format(startDate);
-                        SystemNotification notif = systemNotificationRepository.createNotification(
-                                SystemNotificationSeverity.WARNING,
-                                "Google Translate Daily Limit",
-                                ddMM + ": The daily limit for Google Translate has been reached.",
-                                null, startDate, endDate, null
-                        );
-                        getWebQueueRepository().pushSystemNotification(notif);
-                    }
+//                    if (ex instanceof ResourceExhaustedException) {
+//                        Date startDate = new Date();
+//                        Date endDate = new Date();
+//                        DateUtils.setHours(endDate, 23);
+//                        DateUtils.setMinutes(endDate, 59);
+//                        String ddMM = new SimpleDateFormat("dd/MM").format(startDate);
+//                        SystemNotification notif = systemNotificationRepository.createNotification(
+//                                SystemNotificationSeverity.WARNING,
+//                                "Google Translate Daily Limit",
+//                                ddMM + ": The daily limit for Google Translate has been reached.",
+//                                null, startDate, endDate, null
+//                        );
+//                        getWebQueueRepository().pushSystemNotification(notif);
+//                    }
                     LOGGER.warn("Could not perform translation: " + ex.getMessage());
                     gTranslateFalse(element);
                 }
