@@ -59,7 +59,6 @@ import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.StreamingPropertyValue;
-import com.mware.ge.values.storable.Value;
 import com.mware.ge.values.storable.Values;
 import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
 import io.bigconnect.dw.text.common.TextPropertyHelper;
@@ -74,7 +73,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static io.bigconnect.dw.google.translate.GoogleTranslateSchemaContribution.GOOGLE_TRANSLATED_PROPERTY;
 import static io.bigconnect.dw.google.translate.GoogleTranslateSchemaContribution.GOOGLE_TRANSLATE_PROPERTY;
 
 @Name("Google Translate")
@@ -121,6 +119,15 @@ public class GoogleTranslateDataWorker extends DataWorker {
         return false;
     }
 
+    /**
+     * Translation is made for TITLE and TEXT using the following algorithm:
+     *  1. find all translatable properties (properties that have BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey() in the list of supportedLanguages)
+     *  2. perform the translation
+     *  3. if translation is successful, add the translated property with the same name and the following additional things:
+     *     - BcSchema.TEXT_LANGUAGE_METADATA will have the target language
+     *     - property key: sourceLanguage + "-" + targetLanguage;
+     *  4. mark translation as successful if both properties were translated or failed if any of them failed
+     */
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
         Element element = refresh(data.getElement());
