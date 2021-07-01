@@ -36,9 +36,7 @@
  */
 package io.bigconnect.dw.google.translate;
 
-import com.google.api.gax.rpc.ResourceExhaustedException;
 import com.google.cloud.translate.v3beta1.*;
-import com.google.common.base.Optional;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.mware.core.ingest.dataworker.DataWorker;
@@ -48,12 +46,10 @@ import com.mware.core.ingest.dataworker.ElementOrPropertyStatus;
 import com.mware.core.model.Description;
 import com.mware.core.model.Name;
 import com.mware.core.model.clientapi.dto.VisibilityJson;
-import com.mware.core.model.notification.SystemNotification;
 import com.mware.core.model.notification.SystemNotificationRepository;
-import com.mware.core.model.notification.SystemNotificationSeverity;
 import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
-import com.mware.core.model.properties.types.BooleanBcProperty;
+import com.mware.core.model.properties.types.BcProperty;
 import com.mware.core.model.properties.types.PropertyMetadata;
 import com.mware.core.model.workQueue.Priority;
 import com.mware.core.util.BcLogger;
@@ -61,24 +57,19 @@ import com.mware.core.util.BcLoggerFactory;
 import com.mware.ge.*;
 import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.util.Preconditions;
-import com.mware.ge.values.storable.BooleanValue;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.StreamingPropertyValue;
+import com.mware.ge.values.storable.Value;
 import com.mware.ge.values.storable.Values;
 import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
 import io.bigconnect.dw.text.common.TextPropertyHelper;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.time.DateUtils;
-import org.joda.time.DateTimeUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -132,35 +123,85 @@ public class GoogleTranslateDataWorker extends DataWorker {
 
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
-        LOGGER.info("Preparing to translate...");
         Element element = refresh(data.getElement());
 
-        List<Property> propertiesToTranslate = new ArrayList<>();
-        // find first property different than target language
-        for (Property property : BcSchema.TEXT.getProperties(element)) {
-            String textLanguage = TextPropertyHelper.getTextLanguage(property);
-            if (StringUtils.isEmpty(textLanguage)) {
-                StreamingPropertyValue textSpv = BcSchema.TEXT.getPropertyValue(property);
-                if (textSpv != null) {
-                    textLanguage = languageDetector.detectLanguage(textSpv.readToString()).or("");
-                    if (!StringUtils.isEmpty(textLanguage)) {
-                        ExistingElementMutation<Vertex> m = element.prepareMutation();
-                        m.setPropertyMetadata(property, BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
-                                Values.stringValue(textLanguage), Visibility.EMPTY);
-                        element = m.save(getAuthorizations());
-                    }
-                }
-            }
-            if (StringUtils.isEmpty(textLanguage) || !targetLanguage.equals(textLanguage)) {
-                boolean canTranslate = StringUtils.isEmpty(textLanguage) || supportedLanguages.contains(textLanguage);
-                if (canTranslate)
-                    propertiesToTranslate.add(property);
-            }
+        boolean success = true;
+        success = success && translateTextProperties(element, data);
+        success = success && translateTitleProperties(element, data);
+
+        if (success) {
+            // translation successful, don't translate again
+            GOOGLE_TRANSLATE_PROPERTY.setProperty(element, Boolean.FALSE, Visibility.EMPTY, element.getAuthorizations());
+        }
+        else {
+            // translation not successful, translate again later
+            GOOGLE_TRANSLATE_PROPERTY.setProperty(element, Boolean.TRUE, Visibility.EMPTY, element.getAuthorizations());
         }
 
+        getGraph().flush();
+    }
+
+    private boolean translateTitleProperties(Element element, DataWorkerData data) {
+        List<Property> propertiesToTranslate = findKeyedPropertiesToTranslate(element, BcSchema.TITLE);
         if (propertiesToTranslate.isEmpty()) {
-            gTranslateFalse(element);
-            return;
+            // success
+            return true;
+        }
+
+        try (TranslationServiceClient googleClient = TranslationServiceClient.create()) {
+            for (Property property : propertiesToTranslate) {
+                String title = BcSchema.TITLE.getPropertyValue(property);
+                if (StringUtils.isEmpty(title)) {
+                    continue;
+                }
+
+                try {
+                    String sourceLanguage = TextPropertyHelper.getTextLanguage(property);
+                    TranslateTextRequest req = TranslateTextRequest.newBuilder()
+                            .setParent(locationName.toString())
+                            .setMimeType("text/plain")
+                            .setTargetLanguageCode(targetLanguage)
+                            .addContents(title)
+                            .build();
+                    TranslateTextResponse response = googleClient.translateText(req);
+                    String translatedText = response.getTranslationsList().get(0).getTranslatedText();
+                    PropertyMetadata propertyMetadata = new PropertyMetadata(getUser(), new VisibilityJson(), Visibility.EMPTY);
+                    BcSchema.TEXT_LANGUAGE_METADATA.setMetadata(propertyMetadata, targetLanguage, Visibility.EMPTY);
+                    Metadata textMetadata = propertyMetadata.createMetadata();
+                    String newTextPropertyKey = sourceLanguage + "-" + targetLanguage;
+                    BcSchema.TITLE.addPropertyValue(
+                            element,
+                            newTextPropertyKey,
+                            translatedText,
+                            textMetadata,
+                            Visibility.EMPTY,
+                            getAuthorizations()
+                    );
+
+                    logElement(element, sourceLanguage, title);
+
+                    // success
+                    return true;
+                } catch (Exception ex) {
+                    LOGGER.warn("Could not perform translation: " + ex.getMessage());
+                    // failure
+                    return false;
+                }
+            }
+        } catch (Exception ex) {
+            LOGGER.warn("Could not create translation client.", ex);
+            // failure
+            return false;
+        }
+
+        // success
+        return true;
+    }
+
+    private boolean translateTextProperties(Element element, DataWorkerData data) {
+        List<Property> propertiesToTranslate = findKeyedPropertiesToTranslate(element, BcSchema.TEXT);
+        if (propertiesToTranslate.isEmpty()) {
+            return true;
         }
 
         try (TranslationServiceClient googleClient = TranslationServiceClient.create()) {
@@ -171,9 +212,8 @@ public class GoogleTranslateDataWorker extends DataWorker {
                     continue;
                 }
 
-                String sourceLanguage = TextPropertyHelper.getTextLanguage(property);
-
                 try {
+                    String sourceLanguage = TextPropertyHelper.getTextLanguage(property);
                     TranslateTextRequest req = TranslateTextRequest.newBuilder()
                             .setParent(locationName.toString())
                             .setMimeType("text/plain")
@@ -219,31 +259,47 @@ public class GoogleTranslateDataWorker extends DataWorker {
 
                     getWebQueueRepository().pushTextUpdated(data.getElement().getId(), Priority.HIGH);
                     logElement(element, sourceLanguage, text);
-                    GOOGLE_TRANSLATED_PROPERTY.setProperty(element, Boolean.TRUE, Visibility.EMPTY, element.getAuthorizations());
-                    getGraph().flush();
+
+                    // success
+                    return true;
                 } catch (Exception ex) {
-//                    if (ex instanceof ResourceExhaustedException) {
-//                        Date startDate = new Date();
-//                        Date endDate = new Date();
-//                        DateUtils.setHours(endDate, 23);
-//                        DateUtils.setMinutes(endDate, 59);
-//                        String ddMM = new SimpleDateFormat("dd/MM").format(startDate);
-//                        SystemNotification notif = systemNotificationRepository.createNotification(
-//                                SystemNotificationSeverity.WARNING,
-//                                "Google Translate Daily Limit",
-//                                ddMM + ": The daily limit for Google Translate has been reached.",
-//                                null, startDate, endDate, null
-//                        );
-//                        getWebQueueRepository().pushSystemNotification(notif);
-//                    }
                     LOGGER.warn("Could not perform translation: " + ex.getMessage());
-                    gTranslateFalse(element);
+                    // failure
+                    return false;
                 }
             }
         } catch (Exception ex) {
             LOGGER.warn("Could not create translation client.", ex);
-            gTranslateFalse(element);
+            // failure
+            return false;
         }
+
+        // success
+        return true;
+    }
+
+    private List<Property> findKeyedPropertiesToTranslate(Element element, BcProperty<?> propertyToTranslate) {
+        List<Property> propertiesToTranslate = new ArrayList<>();
+
+        for (Property property : propertyToTranslate.getProperties(element)) {
+            String titleLanguage = TextPropertyHelper.getTextLanguage(property);
+            if (StringUtils.isEmpty(titleLanguage)) {
+                titleLanguage = languageDetector.detectLanguage((String) property.getValue().asObjectCopy()).or("");
+                if (!StringUtils.isEmpty(titleLanguage)) {
+                    ExistingElementMutation<Vertex> m = element.prepareMutation();
+                    m.setPropertyMetadata(property, BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
+                            Values.stringValue(titleLanguage), Visibility.EMPTY);
+                    element = m.save(getAuthorizations());
+                }
+            }
+            if (StringUtils.isEmpty(titleLanguage) || !targetLanguage.equals(titleLanguage)) {
+                boolean canTranslate = StringUtils.isEmpty(titleLanguage) || supportedLanguages.contains(titleLanguage);
+                if (canTranslate)
+                    propertiesToTranslate.add(property);
+            }
+        }
+
+        return propertiesToTranslate;
     }
 
     private void logElement(Element element, String sourceLanguage, String text) {
@@ -264,11 +320,6 @@ public class GoogleTranslateDataWorker extends DataWorker {
                 .append(v.getTimestamp());
 
         LOGGER.warn(sb.toString());
-    }
-
-    private void gTranslateFalse(Element element) {
-        GOOGLE_TRANSLATE_PROPERTY.setProperty(element, Boolean.FALSE, Visibility.EMPTY, element.getAuthorizations());
-        getGraph().flush();
     }
 
     public Set<String> getSupportedTranslations() throws IOException {

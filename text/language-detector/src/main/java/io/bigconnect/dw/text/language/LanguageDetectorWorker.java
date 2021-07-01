@@ -83,41 +83,67 @@ public class LanguageDetectorWorker extends DataWorker {
         }
 
         // if the text was changed
-        return BcSchema.TEXT.getPropertyName().equals(property.getName());
+        return BcSchema.TEXT.getPropertyName().equals(property.getName())
+                || BcSchema.TITLE.getPropertyName().equals(property.getName());
     }
 
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
-        String text = IOUtils.toString(in, StandardCharsets.UTF_8);
-        if (StringUtils.isEmpty(text)) {
-            return;
-        }
+        if (BcSchema.TEXT.isSameName(data.getProperty())) {
+            String text = IOUtils.toString(in, StandardCharsets.UTF_8);
+            if (StringUtils.isEmpty(text)) {
+                return;
+            }
 
-        Optional<String> language = languageDetector.detectLanguage(text);
-        if (language.isPresent()) {
-            // set the new language
-            ExistingElementMutation<Vertex> m = refresh(data.getElement()).prepareMutation();
-            m.setPropertyMetadata(data.getProperty(), BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
-                    Values.stringValue(language.get()), Visibility.EMPTY);
+            Optional<String> language = languageDetector.detectLanguage(text);
+            if (language.isPresent()) {
+                // set the new language
+                ExistingElementMutation<Vertex> m = refresh(data.getElement()).prepareMutation();
+                m.setPropertyMetadata(data.getProperty(), BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
+                        Values.stringValue(language.get()), Visibility.EMPTY);
 
-            // the key for the RAW_LANGUAGE prop must be the same as the TEXT prop key for which the language is detected
-            // this combination is used later in the EntityExtractor and SentimentExtractor
-            m.addPropertyValue(data.getProperty().getKey(), RawObjectSchema.RAW_LANGUAGE.getPropertyName(), Values.stringValue(language.get()), Visibility.EMPTY);
+                // the key for the RAW_LANGUAGE prop must be the same as the TEXT prop key for which the language is detected
+                // this combination is used later in the EntityExtractor and SentimentExtractor
+                m.addPropertyValue(data.getProperty().getKey(), RawObjectSchema.RAW_LANGUAGE.getPropertyName(), Values.stringValue(language.get()), Visibility.EMPTY);
 
-            Element e = m.save(getAuthorizations());
-            getGraph().flush();
+                Element e = m.save(getAuthorizations());
+                getGraph().flush();
 
-            getWorkQueueRepository().pushGraphPropertyQueue(
-                    e,
-                    data.getProperty().getKey(),
-                    RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
-                    data.getWorkspaceId(),
-                    null,
-                    data.getPriority(),
-                    ElementOrPropertyStatus.UPDATE,
-                    null);
-        } else {
-            LOGGER.warn("Could not detect language for text: " + text);
+                getWorkQueueRepository().pushGraphPropertyQueue(
+                        e,
+                        data.getProperty().getKey(),
+                        RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
+                        data.getWorkspaceId(),
+                        data.getVisibilitySource(),
+                        data.getPriority(),
+                        ElementOrPropertyStatus.UPDATE,
+                        null);
+            } else {
+                LOGGER.warn("Could not detect language for text: " + text);
+            }
+        } else if (BcSchema.TITLE.isSameName(data.getProperty())) {
+            String title = BcSchema.TITLE.getFirstPropertyValue(data.getElement());
+            Optional<String> language = languageDetector.detectLanguage(title);
+            if (language.isPresent()) {
+                // set the new language
+                ExistingElementMutation<Vertex> m = refresh(data.getElement()).prepareMutation();
+                m.setPropertyMetadata(data.getProperty(), BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
+                        Values.stringValue(language.get()), Visibility.EMPTY);
+                Element e = m.save(getAuthorizations());
+                getGraph().flush();
+
+                getWorkQueueRepository().pushGraphPropertyQueue(
+                        e,
+                        data.getProperty().getKey(),
+                        RawObjectSchema.TITLE_LANGUAGE.getPropertyName(),
+                        data.getWorkspaceId(),
+                        data.getVisibilitySource(),
+                        data.getPriority(),
+                        ElementOrPropertyStatus.UPDATE,
+                        null);
+            } else {
+                LOGGER.warn("Could not detect language for title: " + title);
+            }
         }
     }
 
