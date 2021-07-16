@@ -38,11 +38,6 @@ public class DataWorkerTester extends CommandLineTool {
         waitForQueueEmpty();
         DataWorkerMemoryTracer.print(); DataWorkerMemoryTracer.clear();
 
-
-        EntityCreator.build(graph, workQueueRepository)
-                .with(e)
-                .push();
-
         Thread.sleep(Long.MAX_VALUE);
         return 0;
     }

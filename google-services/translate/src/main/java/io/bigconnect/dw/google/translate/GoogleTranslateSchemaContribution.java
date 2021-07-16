@@ -22,20 +22,24 @@ public class GoogleTranslateSchemaContribution implements SchemaContribution {
 
     @Override
     public void patchSchema(SchemaFactory schemaFactory) {
-        schemaFactory.newConceptProperty()
-                .concepts(schemaFactory.getConcept(SchemaConstants.CONCEPT_TYPE_THING))
-                .name(GOOGLE_TRANSLATE_PROPERTY.getPropertyName())
-                .type(PropertyType.BOOLEAN)
-                .textIndexHints(EnumSet.of(TextIndexHint.EXACT_MATCH))
-                .userVisible(false)
-                .save();
+        if (schemaFactory.getProperty(GOOGLE_TRANSLATE_PROPERTY.getPropertyName()) == null) {
+            schemaFactory.newConceptProperty()
+                    .concepts(schemaFactory.getConcept(SchemaConstants.CONCEPT_TYPE_THING))
+                    .name(GOOGLE_TRANSLATE_PROPERTY.getPropertyName())
+                    .type(PropertyType.BOOLEAN)
+                    .textIndexHints(EnumSet.of(TextIndexHint.EXACT_MATCH))
+                    .userVisible(false)
+                    .save();
+        }
 
-        schemaFactory.newConceptProperty()
-                .concepts(schemaFactory.getConcept(SchemaConstants.CONCEPT_TYPE_THING))
-                .name(GOOGLE_TRANSLATED_PROPERTY.getPropertyName())
-                .type(PropertyType.BOOLEAN)
-                .textIndexHints(EnumSet.of(TextIndexHint.EXACT_MATCH))
-                .userVisible(false)
-                .save();
+        if (schemaFactory.getProperty(GOOGLE_TRANSLATED_PROPERTY.getPropertyName()) == null) {
+            schemaFactory.newConceptProperty()
+                    .concepts(schemaFactory.getConcept(SchemaConstants.CONCEPT_TYPE_THING))
+                    .name(GOOGLE_TRANSLATED_PROPERTY.getPropertyName())
+                    .type(PropertyType.BOOLEAN)
+                    .textIndexHints(EnumSet.of(TextIndexHint.EXACT_MATCH))
+                    .userVisible(false)
+                    .save();
+        }
     }
 }
