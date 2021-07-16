@@ -26,7 +26,7 @@ public class IntelliDockersIptcSchemaContribution implements SchemaContribution 
                     .name(IPTC.getPropertyName())
                     .userVisible(true)
                     .searchable(true)
-                    .type(PropertyType.DOUBLE)
+                    .type(PropertyType.STRING)
                     .textIndexHints(TextIndexHint.EXACT_MATCH)
                     .save();
         }

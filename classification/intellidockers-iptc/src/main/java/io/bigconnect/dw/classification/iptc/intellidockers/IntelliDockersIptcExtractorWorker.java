@@ -10,13 +10,13 @@ import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
-import com.mware.ge.*;
+import com.mware.ge.Element;
+import com.mware.ge.Property;
+import com.mware.ge.Visibility;
 import com.mware.ge.mutation.ElementMutation;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.StreamingPropertyValue;
-import com.mware.ge.values.storable.Values;
 import com.mware.ontology.IgnoredMimeTypes;
-import io.bigconnect.dw.text.common.TextPropertyHelper;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import retrofit2.Response;
@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Optional;
 
 import static io.bigconnect.dw.classification.iptc.intellidockers.IntelliDockersIptcSchemaContribution.IPTC;
 import static io.bigconnect.dw.classification.iptc.intellidockers.IntelliDockersIptcSchemaContribution.IPTC_SCORE;
@@ -81,7 +80,7 @@ public class IntelliDockersIptcExtractorWorker extends DataWorker {
         StreamingPropertyValue spv = BcSchema.TEXT.getPropertyValue(textProperty);
 
         if (spv == null) {
-            LOGGER.warn("Could not find text property for language: "+language);
+            LOGGER.warn("Could not find text property for language: " + language);
             return;
         }
 
@@ -96,17 +95,20 @@ public class IntelliDockersIptcExtractorWorker extends DataWorker {
             if (response.isSuccessful() && response.body() != null) {
                 // remove previous values
                 ElementMutation m = element.prepareMutation();
-                m.deleteProperty(IPTC.getPropertyName(), Visibility.EMPTY);
+                for (Property p : IPTC.getProperties(element)) {
+                    m.deleteProperty(p);
+                }
                 element = m.save(getAuthorizations());
                 getGraph().flush();
 
                 // set new classes
                 m = element.prepareMutation();
                 List<IptcResponse.IptcCategory> categories = response.body().categories;
-                for (IptcResponse.IptcCategory category : categories) {
+                for (int i = 0; i < categories.size(); i++) {
+                    IptcResponse.IptcCategory category = categories.get(i);
                     com.mware.ge.Metadata metadata = data.createPropertyMetadata(getUser());
                     IPTC_SCORE.setMetadata(metadata, category.score, Visibility.EMPTY);
-                    IPTC.addPropertyValue(m, category.label, category.label, metadata, Visibility.EMPTY);
+                    IPTC.addPropertyValue(m, String.valueOf(i), category.label, metadata, Visibility.EMPTY);
                 }
                 Element e = m.save(getAuthorizations());
 
