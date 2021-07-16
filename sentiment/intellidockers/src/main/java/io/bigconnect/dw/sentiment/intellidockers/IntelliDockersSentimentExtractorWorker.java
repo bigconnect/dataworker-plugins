@@ -42,35 +42,57 @@ import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
 import com.mware.core.ingest.dataworker.ElementOrPropertyStatus;
 import com.mware.core.model.Description;
 import com.mware.core.model.Name;
+import com.mware.core.model.clientapi.dto.VisibilityJson;
 import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
+import com.mware.core.model.schema.SchemaConstants;
+import com.mware.core.model.termMention.TermMentionBuilder;
+import com.mware.core.model.termMention.TermMentionRepository;
+import com.mware.core.model.termMention.TermMentionUtils;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
 import com.mware.ge.Element;
 import com.mware.ge.Property;
+import com.mware.ge.Vertex;
 import com.mware.ge.Visibility;
 import com.mware.ge.mutation.ElementMutation;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.StreamingPropertyValue;
 import com.mware.ge.values.storable.Values;
 import com.mware.ontology.IgnoredMimeTypes;
+import io.bigconnect.dw.text.common.NerUtils;
+import io.bigconnect.dw.text.common.TextSpan;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
 
+import javax.inject.Inject;
+import java.awt.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 @Name("IntelliDockers Sentiment Analysis")
 @Description("Extracts sentiment from text using IntelliDockers")
 public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(IntelliDockersSentimentExtractorWorker.class);
     public static final String CONFIG_INTELLIDOCKERS_URL = "intellidockers.ron.sentiment.url";
+    public static final String CONFIG_INTELLIDOCKERS_PARAGRAPHS = "intellidockers.ron.sentiment.paragraphs";
 
     private IntelliDockersSentiment service;
+    private boolean doParagraphs;
+    private TermMentionRepository termMentionRepository;
+    private TermMentionUtils termMentionUtils;
+
+    @Inject
+    public IntelliDockersSentimentExtractorWorker(
+            TermMentionRepository termMentionRepository
+    ) {
+        this.termMentionRepository = termMentionRepository;
+    }
 
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
@@ -78,13 +100,15 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
 
         String url = getConfiguration().get(CONFIG_INTELLIDOCKERS_URL, null);
         Preconditions.checkState(!StringUtils.isEmpty(url), "Please provide the '" + CONFIG_INTELLIDOCKERS_URL + "' config parameter");
-
         Retrofit retrofit = new Retrofit.Builder()
                 .baseUrl(url)
                 .addConverterFactory(JacksonConverterFactory.create())
                 .build();
 
         service = retrofit.create(IntelliDockersSentiment.class);
+
+        this.doParagraphs = getConfiguration().getBoolean(CONFIG_INTELLIDOCKERS_PARAGRAPHS, true);
+        this.termMentionUtils = new TermMentionUtils(getGraph(), getVisibilityTranslator(), getAuthorizations(), getUser());
     }
 
     @Override
@@ -108,18 +132,19 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
         String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(data.getProperty());
-        StreamingPropertyValue textProperty = BcSchema.TEXT.getPropertyValue(refresh(data.getElement()), data.getProperty().getKey());
+        Property textProperty = BcSchema.TEXT.getProperty(refresh(data.getElement()), data.getProperty().getKey());
+        StreamingPropertyValue spv = BcSchema.TEXT.getPropertyValue(textProperty);
 
-        if (textProperty == null) {
+        if (spv == null) {
             LOGGER.warn("Could not find text property for language: "+language);
             return;
         }
 
-        String text = IOUtils.toString(textProperty.getInputStream(), StandardCharsets.UTF_8);
+        String text = IOUtils.toString(spv.getInputStream(), StandardCharsets.UTF_8);
 
-        ElementMutation m = refresh(data.getElement()).prepareMutation();
+        ElementMutation<Vertex> m = refresh(data.getElement()).prepareMutation();
         m.deleteProperty(RawObjectSchema.RAW_SENTIMENT.getPropertyName(), Visibility.EMPTY);
-        Element element = m.save(getAuthorizations());
+        Vertex element = m.save(getAuthorizations());
         getGraph().flush();
 
         if (StringUtils.isEmpty(text)) {
@@ -146,6 +171,42 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
                 m.setProperty(RawObjectSchema.RAW_SENTIMENT.getPropertyName(), Values.stringValue(sentiment), metadata, data.getVisibility());
                 element = m.save(getAuthorizations());
 
+                getGraph().flush();
+            }
+
+            if (doParagraphs) {
+                NerUtils.removeSentimentTermMentions(element, termMentionRepository, getGraph(), getAuthorizations());
+                List<TextSpan> paragraphs = NerUtils.getParagraphs(text);
+
+                VisibilityJson tmVisibilityJson = new VisibilityJson();
+                tmVisibilityJson.setSource("");
+                for (TextSpan p : paragraphs) {
+                    response = service.process(new SentimentRequest(p.getText(), "ron"))
+                            .execute();
+                    SentimentResponse result = response.body();
+                    if (result != null) {
+                        String sentiment = toBcSentiment(result);
+                        TermMentionBuilder tmb = new TermMentionBuilder()
+                                .outVertex(element)
+                                .propertyKey(textProperty.getKey())
+                                .propertyName(textProperty.getName())
+                                .start(p.getStart())
+                                .end(p.getEnd())
+                                .title(String.format("%s: %f", StringUtils.capitalize(sentiment), result.score))
+                                .score(result.score)
+                                .type("sent")
+                                .visibilityJson(tmVisibilityJson)
+                                .process(getClass().getName());
+
+                        if ("positive".equals(sentiment)) {
+                            tmb.style(String.format("background-color: rgba(0, 255, 0, %f);", result.score / 3));
+                        } else {
+                            tmb.style(String.format("background-color: rgba(255, 0, 0, %f);", result.score / 3));
+                        }
+
+                        tmb.save(getGraph(), getVisibilityTranslator(), getUser(), getAuthorizations());
+                    }
+                }
                 getGraph().flush();
             }
         } catch (IOException e) {

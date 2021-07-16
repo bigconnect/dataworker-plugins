@@ -3,7 +3,6 @@ package io.bigconnect.dw.tester;
 import com.mware.core.bootstrap.InjectHelper;
 import com.mware.core.cmdline.CommandLineTool;
 import com.mware.core.ingest.dataworker.DataWorkerMemoryTracer;
-import com.mware.core.model.properties.RawObjectSchema;
 import com.mware.core.process.DataWorkerRunnerProcess;
 import com.mware.core.status.model.QueueStatus;
 import com.mware.core.status.model.Status;
@@ -12,8 +11,6 @@ import com.mware.ge.Element;
 import lombok.SneakyThrows;
 
 import java.util.Map;
-
-import static io.bigconnect.dw.google.translate.GoogleTranslateSchemaContribution.GOOGLE_TRANSLATE_PROPERTY;
 
 public class DataWorkerTester extends CommandLineTool {
     @Override
@@ -28,19 +25,19 @@ public class DataWorkerTester extends CommandLineTool {
         }
 
         Element e = EntityCreator.build(graph, workQueueRepository)
-                .newDocument("The EU’s vaccine passport and what it means for travel", "It's free - and all EU citizens, as well as non-EU nationals legally staying or living in the member states (with the right to travel to other member states) can download it or obtain a paper copy.")
+                .newDocument("title",
+                        "Șeful Organizației Mondiale a Sănătății, Tedros Adhanom Ghebreyesus, a recunoscut că excluderea ipotezei că noul coronavirus a scăpat dintr-un laborator chinez este prematură, adăugând că a cerut Beijingului să fie mai transparent față de cercetătorii care caută originea pandemiei de Sars-Cov-2.\n" +
+                                "\n" +
+                                "Într-o rară ieșire din obișnuita deferență față de marile puteri din OMS, directorul organizației a declarat că obținerea informațiilor primare a fost o provocare pentru echipa internațională care a mers în China anul acesta pentru a investiga sursa Covid-19, scrie The Guardian. Primul caz la oameni a fost identificat în Wuhan.\n" +
+                                "\n" +
+                                "Tedros a declarat presei că agenția pentru sănătate a ONU din Geneva ”cere actualmente Chinei să fie mai transparentă, mai deschisă și să coopereze, în special în privința informațiilor și datelor primare pe care le-am cerut în primele etape ale pandemiei”.\n" +
+                                "\n" +
+                                "El a spus că a existat o campanie ”prematură” pentru excluderea ipotezei că virusul ar fi putut scăpa dintr-un laborator al guvernului chinez din Wuhan, excludere ce a subminat raportul OMS din martie, ce a concluzionat că o scăpare de laborator este ”extrem de puțin probabilă”.")
                 .push();
 
         waitForQueueEmpty();
         DataWorkerMemoryTracer.print(); DataWorkerMemoryTracer.clear();
 
-        EntityCreator.build(graph, workQueueRepository)
-                .with(e)
-                .setProperty(GOOGLE_TRANSLATE_PROPERTY.getPropertyName(), true)
-                .push(GOOGLE_TRANSLATE_PROPERTY.getPropertyName(), "");
-
-        waitForQueueEmpty();
-        DataWorkerMemoryTracer.print(); DataWorkerMemoryTracer.clear();
 
         EntityCreator.build(graph, workQueueRepository)
                 .with(e)
