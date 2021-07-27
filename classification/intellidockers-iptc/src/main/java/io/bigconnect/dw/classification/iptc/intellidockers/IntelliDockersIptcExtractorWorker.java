@@ -125,7 +125,7 @@ public class IntelliDockersIptcExtractorWorker extends DataWorker {
                         null);
             }
         } catch (IOException e) {
-            LOGGER.warn("Could not extract sentiment: %s", e.getMessage());
+            LOGGER.warn("Could not extract categories: %s", e.getMessage());
         }
     }
 }
