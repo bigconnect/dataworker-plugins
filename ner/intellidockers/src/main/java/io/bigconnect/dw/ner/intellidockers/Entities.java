@@ -46,5 +46,12 @@ public class Entities {
         public String entity;
         public String type;
         public int count;
+        public List<EntityDetail> details = new ArrayList<>();
+    }
+
+    public static class EntityDetail {
+        public double score;
+        public int start;
+        public int end;
     }
 }

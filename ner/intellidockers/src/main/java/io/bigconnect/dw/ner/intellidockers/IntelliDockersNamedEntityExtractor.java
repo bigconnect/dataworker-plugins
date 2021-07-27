@@ -104,11 +104,12 @@ public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
 
             if (response.isSuccessful() && response.body() != null) {
                 for (Entities.Entity entity : response.body().entities) {
-                    int start = StringUtils.indexOf(text, entity.entity);
-                    if (start < 0) {
-                        LOGGER.debug("Could not find detected entity in text: "+entity.entity);
+                    if (entity.details.size() == 0)
                         continue;
-                    }
+
+                    Entities.EntityDetail detail = entity.details.get(0);
+
+                    int start = detail.start;
 
                     switch (entity.type) {
                         case "PERSON":
