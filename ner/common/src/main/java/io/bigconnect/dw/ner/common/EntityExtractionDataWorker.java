@@ -54,6 +54,8 @@ import com.mware.ge.*;
 import com.mware.ge.mutation.ElementMutation;
 import com.mware.ge.query.Compare;
 import com.mware.ge.query.QueryResultsIterable;
+import com.mware.ge.query.builder.GeQueryBuilder;
+import com.mware.ge.query.builder.GeQueryBuilders;
 import com.mware.ge.values.storable.StreamingPropertyValue;
 import com.mware.ge.values.storable.Values;
 import com.mware.ontology.IgnoredMimeTypes;
@@ -326,10 +328,10 @@ public class EntityExtractionDataWorker extends DataWorker {
     }
 
     private Vertex findExistingVertexWithConceptAndTitle(String conceptType, String title) {
-        try (QueryResultsIterable<Vertex> existingVertices = getGraph().query(getAuthorizations())
-                .hasConceptType(conceptType)
-                .has(BcSchema.TITLE.getPropertyName(), Compare.EQUAL, Values.stringValue(title.trim()))
-                .vertices()) {
+        GeQueryBuilder qb = GeQueryBuilders.boolQuery()
+                .and(GeQueryBuilders.hasConceptType(conceptType))
+                .and(GeQueryBuilders.hasFilter(BcSchema.TITLE.getPropertyName(), Compare.EQUAL, Values.stringValue(title.trim())));
+        try (QueryResultsIterable<Vertex> existingVertices = getGraph().query(qb, getAuthorizations()).vertices()) {
 
             Iterator<Vertex> iterator = existingVertices.iterator();
             if (iterator.hasNext()) {

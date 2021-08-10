@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.bigconnect</groupId>
         <artifactId>dataworker-plugins</artifactId>
-        <version>4.2.1</version>
+        <version>4.3.0</version>
     </parent>
 
     <artifactId>dw-tester</artifactId>
@@ -21,27 +21,27 @@
         <dependency>
             <groupId>io.bigconnect</groupId>
             <artifactId>dw-mime-type-detector</artifactId>
-            <version>4.2.1</version>
+            <version>4.3.0</version>
         </dependency>
         <dependency>
             <groupId>io.bigconnect</groupId>
             <artifactId>dw-text-language-detector</artifactId>
-            <version>4.2.1</version>
+            <version>4.3.0</version>
         </dependency>
         <dependency>
             <groupId>io.bigconnect</groupId>
             <artifactId>dw-sentiment-intellidockers</artifactId>
-            <version>4.2.1</version>
+            <version>4.3.0</version>
         </dependency>
         <dependency>
             <groupId>io.bigconnect</groupId>
             <artifactId>dw-ner-intellidockers</artifactId>
-            <version>4.2.1</version>
+            <version>4.3.0</version>
         </dependency>
         <dependency>
             <groupId>io.bigconnect</groupId>
             <artifactId>dw-classification-intellidockers-iptc</artifactId>
-            <version>4.2.1</version>
+            <version>4.3.0</version>
         </dependency>
 
         <dependency>

@@ -56,9 +56,13 @@ import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
 import com.mware.ge.*;
 import com.mware.ge.mutation.ElementMutation;
+import com.mware.ge.query.QueryResultsIterable;
+import com.mware.ge.query.builder.GeQueryBuilder;
+import com.mware.ge.query.builder.GeQueryBuilders;
 import com.mware.ge.values.storable.Values;
 import com.mware.ontology.IgnoredMimeTypes;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
@@ -66,6 +70,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static com.mware.ge.query.builder.GeQueryBuilders.hasFilter;
 
 
 @Name("Regex Extractor")
@@ -177,12 +183,14 @@ public class RegexExtractorWorker extends DataWorker {
     }
 
     private Vertex findExistingVertexWithTitle(String title, Authorizations authorizations) {
-        Iterator<Vertex> existingVertices = getGraph().query(authorizations)
-                .has(BcSchema.TITLE.getPropertyName(), Values.stringValue(title))
-                .vertices()
-                .iterator();
-        if (existingVertices.hasNext()) {
-            return existingVertices.next();
+        try (QueryResultsIterable<Vertex> iterable = getGraph().query(hasFilter(BcSchema.TITLE.getPropertyName(), Values.stringValue(title)), authorizations)
+                .vertices()) {
+            Iterator<Vertex> iter = iterable.iterator();
+            if (iter.hasNext()) {
+                return iter.next();
+            }
+        } catch (IOException ex) {
+            ex.printStackTrace();
         }
         return null;
     }

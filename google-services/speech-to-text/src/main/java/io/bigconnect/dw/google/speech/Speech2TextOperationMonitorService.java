@@ -63,6 +63,7 @@ import com.mware.core.util.BcLoggerFactory;
 import com.mware.core.util.PeriodicBackgroundService;
 import com.mware.ge.*;
 import com.mware.ge.query.QueryResultsIterable;
+import com.mware.ge.query.builder.GeQueryBuilders;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.TextValue;
@@ -112,8 +113,7 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
 
     @Override
     protected void run() {
-        try (QueryResultsIterable<Vertex> pendingVertices = graph.query(AUTHORIZATIONS_ALL)
-                .has(OPERATION_NAME.getPropertyName())
+        try (QueryResultsIterable<Vertex> pendingVertices = graph.query(GeQueryBuilders.exists(OPERATION_NAME.getPropertyName()), AUTHORIZATIONS_ALL)
                 .vertices()) {
             LOGGER.info("Found %s Google responses still pending", pendingVertices.getTotalHits());
 

@@ -53,13 +53,13 @@ public class TextPropertyHelper {
         Iterable<Property> properties = BcSchema.TEXT.getProperties(element);
 
         Property property = Iterables.single(
-                Iterables.filter(p -> {
+                Iterables.filter(properties, p -> {
                     if (p.getMetadata().containsKey(BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey())) {
                         String textLanguage = BcSchema.TEXT_LANGUAGE_METADATA.getMetadataValue(p);
                         return StringUtils.equals(language, textLanguage);
                     }
                     return false;
-                }, properties)
+                })
         , null);
 
         return Optional.ofNullable(property);
