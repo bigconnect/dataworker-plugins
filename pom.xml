@@ -20,7 +20,7 @@
     <name>BigConnect: DataWorker: Plugins</name>
 
     <properties>
-        <bigconnect.version>4.3.0</bigconnect.version>
+        <bigconnect.version>${project.version}</bigconnect.version>
         <scala.version>2.11.12</scala.version>
         <scala-maven-plugin.version>3.4.2</scala-maven-plugin.version>
         <scala.binary.version>2.11</scala.binary.version>

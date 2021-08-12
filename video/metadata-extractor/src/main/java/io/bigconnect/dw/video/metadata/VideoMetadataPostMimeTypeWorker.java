@@ -66,7 +66,7 @@ public class VideoMetadataPostMimeTypeWorker extends PostMimeTypeWorker {
     private SchemaRepository schemaRepository;
     private DoubleBcProperty duration;
     private GeoPointBcProperty geoLocation;
-    private DateBcProperty dateTaken;
+    private DateTimeBcProperty dateTaken;
     private IntegerBcProperty width;
     private IntegerBcProperty height;
     private StringBcProperty mediaMetadata;
@@ -77,7 +77,7 @@ public class VideoMetadataPostMimeTypeWorker extends PostMimeTypeWorker {
         super.prepare(workerPrepareData);
         duration = new DoubleBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.duration"));
         geoLocation = new GeoPointBcProperty(schemaRepository.getRequiredPropertyNameByIntent("geoLocation"));
-        dateTaken = new DateBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.dateTaken"));
+        dateTaken = new DateTimeBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.dateTaken"));
         width = new IntegerBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.width"));
         height = new IntegerBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.height"));
         mediaMetadata = new StringBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.metadata"));
