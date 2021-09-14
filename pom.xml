@@ -15,7 +15,7 @@
 
     <groupId>io.bigconnect</groupId>
     <artifactId>dataworker-plugins</artifactId>
-    <version>4.2.1</version>
+    <version>4.2.2-SNAPSHOT</version>
 
     <name>BigConnect: DataWorker: Plugins</name>
     <description>Various DataWorker Plugins for BigConnect</description>
@@ -83,7 +83,7 @@
     </repositories>
 
     <properties>
-        <bigconnect.version>4.2.1</bigconnect.version>
+        <bigconnect.version>4.2.2-SNAPSHOT</bigconnect.version>
         <scala.version>2.11.12</scala.version>
         <scala-maven-plugin.version>3.4.2</scala-maven-plugin.version>
         <scala.binary.version>2.11</scala.binary.version>
