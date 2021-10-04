@@ -165,7 +165,7 @@ public class EntityExtractionDataWorker extends DataWorker {
             String name = resolvedLocation.getGeoname().getName();
 
             // create a single term mention for each resolved name
-            if(alreadyResolvedMentions.contains(name))
+            if(StringUtils.isEmpty(name) || alreadyResolvedMentions.contains(name))
                 continue;
 
             Vertex termMention = termMentionUtils.createTermMention(
@@ -211,7 +211,7 @@ public class EntityExtractionDataWorker extends DataWorker {
             int end = start + occurrence.text.length();
 
             // create a single term mention for each resolved name
-            if(alreadyResolvedMentions.contains(name))
+            if(StringUtils.isEmpty(name) || alreadyResolvedMentions.contains(name))
                 continue;
 
             Vertex termMention = termMentionUtils.createTermMention(
@@ -253,7 +253,7 @@ public class EntityExtractionDataWorker extends DataWorker {
             int end = start + occurrence.text.length();
 
             // create a single term mention for each resolved name
-            if(alreadyResolvedMentions.contains(name))
+            if(StringUtils.isEmpty(name) || alreadyResolvedMentions.contains(name))
                 continue;
 
             Vertex termMention = termMentionUtils.createTermMention(
@@ -295,7 +295,7 @@ public class EntityExtractionDataWorker extends DataWorker {
             String conceptType = entity.conceptType;
 
             // create a single term mention for each resolved name
-            if(alreadyResolvedMentions.contains(name))
+            if(StringUtils.isEmpty(name) || alreadyResolvedMentions.contains(name))
                 continue;
 
             Vertex termMention = termMentionUtils.createTermMention(

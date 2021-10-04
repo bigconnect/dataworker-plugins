@@ -38,21 +38,20 @@ package io.bigconnect.dw.ner.intellidockers;
 
 import com.bericotech.clavin.extractor.LocationOccurrence;
 import com.mware.core.config.Configuration;
-import com.mware.core.config.HashMapConfigurationLoader;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
 import com.mware.ge.util.Preconditions;
 import io.bigconnect.dw.ner.common.extractor.*;
 import io.bigconnect.dw.ner.common.places.substitutions.WikipediaDemonymMap;
+import okhttp3.OkHttpClient;
 import org.apache.commons.lang3.StringUtils;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
 
 import java.io.IOException;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static io.bigconnect.dw.ner.intellidockers.IntelliDockersSchemaContribution.*;
 
@@ -71,8 +70,15 @@ public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
         String url = config.get(CONFIG_INTELLIDOCKERS_URL, null);
         Preconditions.checkState(!StringUtils.isEmpty(url), "Please provide the '" + CONFIG_INTELLIDOCKERS_URL + "' config parameter");
 
+        OkHttpClient client = new OkHttpClient().newBuilder()
+                .callTimeout(1, TimeUnit.MINUTES)
+                .readTimeout(1, TimeUnit.MINUTES)
+                .connectTimeout(3, TimeUnit.SECONDS)
+                .build();
+
         Retrofit retrofit = new Retrofit.Builder()
                 .baseUrl(url)
+                .client(client)
                 .addConverterFactory(JacksonConverterFactory.create())
                 .build();
 
