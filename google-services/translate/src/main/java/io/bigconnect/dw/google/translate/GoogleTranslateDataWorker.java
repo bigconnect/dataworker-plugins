@@ -61,6 +61,7 @@ import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.StreamingPropertyValue;
 import com.mware.ge.values.storable.Values;
 import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
+import io.bigconnect.dw.text.common.LanguageDetectorUtil;
 import io.bigconnect.dw.text.common.TextPropertyHelper;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -291,7 +292,9 @@ public class GoogleTranslateDataWorker extends DataWorker {
         for (Property property : propertyToTranslate.getProperties(element)) {
             String titleLanguage = TextPropertyHelper.getTextLanguage(property);
             if (StringUtils.isEmpty(titleLanguage)) {
-                titleLanguage = languageDetector.detectLanguage((String) property.getValue().asObjectCopy()).or("");
+                titleLanguage = languageDetector
+                        .detectLanguage((String) property.getValue().asObjectCopy())
+                        .orElse("");
                 if (!StringUtils.isEmpty(titleLanguage)) {
                     ExistingElementMutation<Vertex> m = element.prepareMutation();
                     m.setPropertyMetadata(property, BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),

@@ -12,4 +12,13 @@
     <artifactId>dw-text-common</artifactId>
     <name>BigConnect: DataWorker: Text: Common</name>
     <packaging>jar</packaging>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.github.pemistahl</groupId>
+            <artifactId>lingua</artifactId>
+            <version>1.1.0</version>
+            <scope>compile</scope>
+        </dependency>
+    </dependencies>
 </project>

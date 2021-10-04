@@ -36,7 +36,8 @@
  */
 package io.bigconnect.dw.text.language;
 
-import com.google.common.base.Optional;
+import com.github.pemistahl.lingua.api.IsoCode639_1;
+import com.github.pemistahl.lingua.api.Language;
 import com.mware.core.ingest.dataworker.DataWorker;
 import com.mware.core.ingest.dataworker.DataWorkerData;
 import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
@@ -53,14 +54,14 @@ import com.mware.ge.Vertex;
 import com.mware.ge.Visibility;
 import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.values.storable.Values;
-import com.optimaize.langdetect.i18n.LdLocale;
-import com.optimaize.langdetect.profiles.BuiltInLanguages;
+import io.bigconnect.dw.text.common.LanguageDetectorUtil;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -148,9 +149,11 @@ public class LanguageDetectorWorker extends DataWorker {
     }
 
     public static Set<String> getSupportedLanguages() {
-        List<LdLocale> languages = BuiltInLanguages.getLanguages();
+        List<Language> languages = Language.Companion.allSpokenOnes();
         return languages.stream()
-                .map(LdLocale::getLanguage)
+                .map(Language::getIsoCode639_1)
+                .map(IsoCode639_1::name)
+                .map(String::toLowerCase)
                 .collect(Collectors.toSet());
     }
 }
