@@ -54,6 +54,8 @@ import com.mware.ge.Element;
 import com.mware.ge.Property;
 import com.mware.ge.Vertex;
 import com.mware.ge.Visibility;
+import com.mware.ge.metric.PausableTimerContext;
+import com.mware.ge.metric.Timer;
 import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.values.storable.*;
 import de.l3s.boilerpipe.BoilerpipeProcessingException;
@@ -137,6 +139,7 @@ public class TikaTextExtractorWorker extends DataWorker {
     private List<String> customFlickrMetadataKeys;
     private List<String> authorKeys;
     private List<String> numberOfPagesKeys;
+    private Timer detectTimer;
 
     @Inject
     public TikaTextExtractorWorker(
@@ -172,6 +175,7 @@ public class TikaTextExtractorWorker extends DataWorker {
         customFlickrMetadataKeys = Arrays.asList(tikaProperties.getProperty(CUSTOM_FLICKR_METADATA_KEYS_PROPERTY, "Unknown tag (0x9286)").split(","));
         authorKeys = Arrays.asList(tikaProperties.getProperty(AUTHOR_PROPERTY, "author").split(","));
         numberOfPagesKeys = Arrays.asList(tikaProperties.getProperty(NUMBER_OF_PAGES_PROPERTY, "xmpTPg:NPages").split(","));
+        detectTimer = getGraph().getMetricsRegistry().getTimer(getClass(), "extract-time");
     }
 
     @Override
@@ -189,7 +193,9 @@ public class TikaTextExtractorWorker extends DataWorker {
         metadata.set(Metadata.CONTENT_TYPE, mimeType.stringValue());
 
         StreamingPropertyValue rawValue = (StreamingPropertyValue) raw.getValue();
+        PausableTimerContext t = new PausableTimerContext(detectTimer);
         String text = extractText(rawValue.getInputStream(), mimeType.stringValue(), metadata);
+        t.stop();
 
         final String propertyKey = raw.getKey();
         TikaTextExtractorWorkerConfiguration.TextExtractMapping textExtractMapping
@@ -263,7 +269,7 @@ public class TikaTextExtractorWorker extends DataWorker {
         getGraph().flush();
 
         getWebQueueRepository().broadcastPropertyChange(e, propertyKey, textExtractMapping.getExtractedTextPropertyName(), data.getWorkspaceId());
-        getWorkQueueRepository().pushGraphPropertyQueue(
+        getWorkQueueRepository().pushOnDwQueue(
                 e,
                 propertyKey,
                 textExtractMapping.getExtractedTextPropertyName(),

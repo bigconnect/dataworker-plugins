@@ -135,7 +135,7 @@ public class VideoFrameExtractorWorker extends DataWorker {
                     getWebQueueRepository().broadcastPropertyChange(e, propertyKey, MediaBcSchema.VIDEO_FRAME.getPropertyName(), null);
                 }
 
-                getWorkQueueRepository().pushGraphPropertyQueue(
+                getWorkQueueRepository().pushOnDwQueue(
                         e,
                         propertyKey,
                         MediaBcSchema.VIDEO_FRAME.getPropertyName(),

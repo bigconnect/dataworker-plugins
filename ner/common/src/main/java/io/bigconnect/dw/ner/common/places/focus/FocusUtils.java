@@ -41,6 +41,7 @@ import com.bericotech.clavin.gazetteer.FeatureClass;
 import com.bericotech.clavin.gazetteer.GeoName;
 import com.bericotech.clavin.resolver.ResolvedLocation;
 import com.mware.core.config.Configuration;
+import com.mware.ge.metric.GeMetricRegistry;
 import io.bigconnect.dw.ner.common.places.Adm1GeoNameLookup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,7 +81,7 @@ public class FocusUtils {
         return cityCounts;
     }
 
-    public static HashMap<String, Integer> getStateCounts(List<ResolvedLocation> resolvedLocations, Configuration configuration) {
+    public static HashMap<String, Integer> getStateCounts(List<ResolvedLocation> resolvedLocations, Configuration configuration, GeMetricRegistry metricRegistry) {
         HashMap<String, Integer> stateCounts = new HashMap<String, Integer>();
         for (ResolvedLocation resolvedLocation : resolvedLocations) {
             if (resolvedLocation.getGeoname().getPrimaryCountryCode() == CountryCode.NULL) {
@@ -89,7 +90,7 @@ public class FocusUtils {
             CountryCode country = resolvedLocation.getGeoname().getPrimaryCountryCode();
             String adm1Code = resolvedLocation.getGeoname().getAdmin1Code();
             String key = Adm1GeoNameLookup.getKey(country, adm1Code);
-            if (!Adm1GeoNameLookup.isValid(key, configuration)) {    // skip things that aren't actually ADM1 codes
+            if (!Adm1GeoNameLookup.isValid(key, configuration, metricRegistry)) {    // skip things that aren't actually ADM1 codes
                 continue;
             }
             if (!stateCounts.containsKey(key)) {

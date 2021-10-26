@@ -165,7 +165,7 @@ public class ImageMetadataWorker extends DataWorker {
                 getWebQueueRepository().broadcastPropertyChange(e, MULTI_VALUE_KEY, propertyName, null);
             }
 
-            getWorkQueueRepository().pushGraphPropertyQueue(
+            getWorkQueueRepository().pushOnDwQueue(
                     e,
                     MULTI_VALUE_KEY,
                     propertyName,

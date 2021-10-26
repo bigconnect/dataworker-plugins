@@ -75,7 +75,7 @@ public class LocationResolverDataWorker extends DataWorker {
 
         File gazetteerDir = new File(getConfiguration().get(ParseManager.GEOINDEX_PATH, ""));
         if (gazetteerDir.exists() && gazetteerDir.isDirectory()) {
-            resolver = ParseManager.getLocationResolver(getConfiguration());
+            resolver = ParseManager.getLocationResolver(getConfiguration(), getGraph().getMetricsRegistry());
         } else {
             LOGGER.error("Missing gazetter! Download and build a CLAVIN IndexDirectory at " + getConfiguration().get(ParseManager.GEOINDEX_PATH, ""));
         }

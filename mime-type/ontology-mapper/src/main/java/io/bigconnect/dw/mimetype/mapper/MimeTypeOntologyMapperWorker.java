@@ -156,7 +156,7 @@ public class MimeTypeOntologyMapperWorker extends DataWorker {
 
         getWebQueueRepository().broadcastPropertyChange(element, "", "conceptType", data.getWorkspaceId());
 
-        getWorkQueueRepository().pushGraphPropertyQueue(
+        getWorkQueueRepository().pushOnDwQueue(
                 element,
                 changedProperties,
                 data.getWorkspaceId(),

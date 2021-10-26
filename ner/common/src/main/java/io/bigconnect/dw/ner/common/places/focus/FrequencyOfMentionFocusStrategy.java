@@ -40,6 +40,7 @@ import com.bericotech.clavin.gazetteer.CountryCode;
 import com.bericotech.clavin.gazetteer.GeoName;
 import com.bericotech.clavin.resolver.ResolvedLocation;
 import com.mware.core.config.Configuration;
+import com.mware.ge.metric.GeMetricRegistry;
 import io.bigconnect.dw.ner.common.places.Adm1GeoNameLookup;
 import io.bigconnect.dw.ner.common.places.CountryGeoNameLookup;
 import org.slf4j.Logger;
@@ -59,9 +60,11 @@ public class FrequencyOfMentionFocusStrategy implements FocusStrategy {
 
     private static final Logger logger = LoggerFactory.getLogger(FrequencyOfMentionFocusStrategy.class);
     private Configuration configuration;
+    private GeMetricRegistry metricRegistry;
 
-    public FrequencyOfMentionFocusStrategy(Configuration configuration) {
+    public FrequencyOfMentionFocusStrategy(Configuration configuration, GeMetricRegistry metricRegistry) {
         this.configuration = configuration;
+        this.metricRegistry = metricRegistry;
     }
 
     @Override
@@ -83,12 +86,12 @@ public class FrequencyOfMentionFocusStrategy implements FocusStrategy {
         // return results
         if (primaryCountry != null) {
             results.add(new FocusLocation(
-                    CountryGeoNameLookup.lookup(primaryCountry.name(), configuration), countryCounts.get(primaryCountry))
+                    CountryGeoNameLookup.lookup(primaryCountry.name(), configuration, metricRegistry), countryCounts.get(primaryCountry))
             );
             for (CountryCode countryCode : countryCounts.keySet()) {
                 if (countryCode != primaryCountry && countryCounts.get(countryCode) == countryCounts.get(primaryCountry)) {
                     results.add(new FocusLocation(
-                            CountryGeoNameLookup.lookup(countryCode.name(), configuration), countryCounts.get(countryCode))
+                            CountryGeoNameLookup.lookup(countryCode.name(), configuration, metricRegistry), countryCounts.get(countryCode))
                     );
                 }
             }
@@ -100,7 +103,7 @@ public class FrequencyOfMentionFocusStrategy implements FocusStrategy {
     public List<FocusLocation> selectStates(List<ResolvedLocation> resolvedLocations) {
         List<FocusLocation> results = new ArrayList<FocusLocation>();
         // count state mentions
-        HashMap<String, Integer> stateCounts = FocusUtils.getStateCounts(resolvedLocations, configuration);
+        HashMap<String, Integer> stateCounts = FocusUtils.getStateCounts(resolvedLocations, configuration, metricRegistry);
         if (stateCounts.size() == 0) {
             return results;
         }
@@ -119,12 +122,12 @@ public class FrequencyOfMentionFocusStrategy implements FocusStrategy {
         if (primaryState != null) {
             int primaryStateCount = stateCounts.get(primaryState);
             results.add(new FocusLocation(
-                    Adm1GeoNameLookup.lookup(primaryState, configuration), primaryStateCount));
+                    Adm1GeoNameLookup.lookup(primaryState, configuration, metricRegistry), primaryStateCount));
             for (String stateCode : stateCounts.keySet()) {
                 int count = stateCounts.get(stateCode);
                 if (stateCode != primaryState && count == primaryStateCount) {
                     results.add(new FocusLocation(
-                            Adm1GeoNameLookup.lookup(stateCode, configuration), count));
+                            Adm1GeoNameLookup.lookup(stateCode, configuration, metricRegistry), count));
                 }
             }
         }

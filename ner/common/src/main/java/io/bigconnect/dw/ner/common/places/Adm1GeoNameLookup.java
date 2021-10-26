@@ -40,6 +40,7 @@ package io.bigconnect.dw.ner.common.places;
 import com.bericotech.clavin.gazetteer.CountryCode;
 import com.bericotech.clavin.gazetteer.GeoName;
 import com.mware.core.config.Configuration;
+import com.mware.ge.metric.GeMetricRegistry;
 import io.bigconnect.dw.ner.common.ParseManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,10 +60,12 @@ public class Adm1GeoNameLookup extends AbstractGeoNameLookup {
 
     private static Adm1GeoNameLookup instance;
     private Configuration configuration;
+    private GeMetricRegistry metricRegistry;
 
-    public Adm1GeoNameLookup(Configuration configuration) throws IOException {
+    public Adm1GeoNameLookup(Configuration configuration, GeMetricRegistry metricRegistry) throws IOException {
         super();
         this.configuration = configuration;
+        this.metricRegistry = metricRegistry;
     }
 
     public static String getKey(String countryCode, String ADM1) {
@@ -80,7 +83,7 @@ public class Adm1GeoNameLookup extends AbstractGeoNameLookup {
     @Override
     public void parse() {
         try {
-            CliffLocationResolver resolver = ParseManager.getResolver(configuration);
+            CliffLocationResolver resolver = ParseManager.getResolver(configuration, metricRegistry);
             BufferedReader br = new BufferedReader(new InputStreamReader(this.getClass().getClassLoader().getResourceAsStream(RESOURCE_NAME)));
             String line = null;
             while ((line = br.readLine()) != null) {
@@ -107,16 +110,16 @@ public class Adm1GeoNameLookup extends AbstractGeoNameLookup {
         }
     }
 
-    private static Adm1GeoNameLookup getInstance(Configuration configuration) throws IOException {
+    private static Adm1GeoNameLookup getInstance(Configuration configuration, GeMetricRegistry metricRegistry) throws IOException {
         if (instance == null) {
-            instance = new Adm1GeoNameLookup(configuration);
+            instance = new Adm1GeoNameLookup(configuration, metricRegistry);
         }
         return instance;
     }
 
-    public static GeoName lookup(String countryCodeDotAdm1Code, Configuration configuration) {
+    public static GeoName lookup(String countryCodeDotAdm1Code, Configuration configuration, GeMetricRegistry metricRegistry) {
         try {
-            Adm1GeoNameLookup lookup = getInstance(configuration);
+            Adm1GeoNameLookup lookup = getInstance(configuration, metricRegistry);
             GeoName geoName = lookup.get(countryCodeDotAdm1Code);
             logger.debug("Found '" + countryCodeDotAdm1Code + "': " + geoName);
             return geoName;
@@ -127,10 +130,10 @@ public class Adm1GeoNameLookup extends AbstractGeoNameLookup {
         return null;
     }
 
-    public static boolean isValid(String countryCodeDotAdm1Code, Configuration configuration) {
+    public static boolean isValid(String countryCodeDotAdm1Code, Configuration configuration, GeMetricRegistry metricRegistry) {
         boolean valid = false;
         try {
-            Adm1GeoNameLookup lookup = getInstance(configuration);
+            Adm1GeoNameLookup lookup = getInstance(configuration, metricRegistry);
             valid = lookup.contains(countryCodeDotAdm1Code);
         } catch (IOException ioe) {
             logger.error("Couldn't lookup state ADM1 geoname!");
@@ -139,8 +142,8 @@ public class Adm1GeoNameLookup extends AbstractGeoNameLookup {
         return valid;
     }
 
-    public static GeoName lookup(String countryCode, String adm1Code, Configuration configuration) {
-        return lookup(getKey(countryCode, adm1Code), configuration);
+    public static GeoName lookup(String countryCode, String adm1Code, Configuration configuration, GeMetricRegistry metricRegistry) {
+        return lookup(getKey(countryCode, adm1Code), configuration, metricRegistry);
     }
 
 }

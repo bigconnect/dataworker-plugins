@@ -37,6 +37,7 @@
 package io.bigconnect.dw.ner.common.extractor;
 
 import com.mware.core.config.Configuration;
+import com.mware.ge.metric.GeMetricRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,32 +52,34 @@ public class EntityExtractorService {
     private static EntityExtractorService service;
     private ServiceLoader<EntityExtractor> loader;
     private Configuration configuration;
+    private GeMetricRegistry metricRegistry;
 
-    private EntityExtractorService(Configuration configuration) {
+    private EntityExtractorService(Configuration configuration, GeMetricRegistry metricRegistry) {
         this.configuration = configuration;
+        this.metricRegistry = metricRegistry;
         loader = ServiceLoader.load(EntityExtractor.class);
     }
 
-    public static synchronized EntityExtractorService getInstance(Configuration configuration) {
+    public static synchronized EntityExtractorService getInstance(Configuration configuration, GeMetricRegistry metricRegistry) {
         if (service == null) {
-            service = new EntityExtractorService(configuration);
+            service = new EntityExtractorService(configuration, metricRegistry);
         }
         return service;
     }
 
-    public void initialize(Configuration config) throws Exception {
+    public void initialize(Configuration config, GeMetricRegistry metricRegistry) throws Exception {
         Iterator<EntityExtractor> extractors = loader.iterator();
         logger.info("Initializing NER Extractors");
         while (extractors.hasNext()) {
             EntityExtractor currentExtractor = extractors.next();
             logger.info("Initializing Extractor - {}", currentExtractor.getName());
-            currentExtractor.initialize(config);
+            currentExtractor.initialize(config, metricRegistry);
         }
 
     }
     
     public ExtractedEntities extractEntities(String languageCode, String textToParse, boolean manuallyReplaceDemonyms) {
-        ExtractedEntities e = new ExtractedEntities(configuration);
+        ExtractedEntities e = new ExtractedEntities(configuration, metricRegistry);
         try {
             Iterator<EntityExtractor> extractors = loader.iterator();
             while (extractors != null && extractors.hasNext()) {
@@ -93,7 +96,7 @@ public class EntityExtractorService {
 
     @SuppressWarnings("rawtypes")
     public ExtractedEntities extractEntitiesFromSentences(String languageCode, Map[] sentences, boolean manuallyReplaceDemonyms) {
-        ExtractedEntities e = new ExtractedEntities(configuration);
+        ExtractedEntities e = new ExtractedEntities(configuration, metricRegistry);
         try {
             Iterator<EntityExtractor> extractors = loader.iterator();
             while (extractors != null && extractors.hasNext()) {

@@ -101,7 +101,7 @@ public class VideoAudioExtractorWorker extends DataWorker {
                 if (getWebQueueRepository().shouldBroadcast(data.getPriority())) {
                     getWebQueueRepository().broadcastPropertyChange(e, PROPERTY_KEY, MediaBcSchema.AUDIO_MP3.getPropertyName(), null);
                 }
-                getWorkQueueRepository().pushGraphPropertyQueue(
+                getWorkQueueRepository().pushOnDwQueue(
                         e,
                         PROPERTY_KEY,
                         MediaBcSchema.AUDIO_MP3.getPropertyName(),

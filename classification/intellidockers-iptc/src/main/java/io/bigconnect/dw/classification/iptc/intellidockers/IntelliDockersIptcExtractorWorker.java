@@ -114,7 +114,7 @@ public class IntelliDockersIptcExtractorWorker extends DataWorker {
 
                 getGraph().flush();
 
-                getWorkQueueRepository().pushGraphPropertyQueue(
+                getWorkQueueRepository().pushOnDwQueue(
                         e,
                         null,
                         IPTC.getPropertyName(),

@@ -134,7 +134,7 @@ public class EntityExtractionDataWorker extends DataWorker {
             Vertex outVertex = (Vertex) refresh(data.getElement());
 
             NerUtils.removeEntityTermMentions(outVertex, termMentionRepository, termMentionUtils, getGraph(), getAuthorizations());
-            ExtractedEntities entities = ParseManager.extractAndResolve(getConfiguration(), language, text);
+            ExtractedEntities entities = ParseManager.extractAndResolve(getConfiguration(), getGraph().getMetricsRegistry(), language, text);
             if (entities != null) {
                 VisibilityJson tmVisibilityJson = new VisibilityJson();
                 tmVisibilityJson.setSource("");

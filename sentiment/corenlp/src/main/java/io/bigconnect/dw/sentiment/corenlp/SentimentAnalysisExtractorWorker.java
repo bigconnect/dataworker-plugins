@@ -122,7 +122,7 @@ public class SentimentAnalysisExtractorWorker extends DataWorker {
         getGraph().flush();
 
         if (StringUtils.isEmpty(text)) {
-            getWorkQueueRepository().pushGraphPropertyQueue(
+            getWorkQueueRepository().pushOnDwQueue(
                     element,
                     "",
                     RawObjectSchema.RAW_SENTIMENT.getPropertyName(),
@@ -142,7 +142,7 @@ public class SentimentAnalysisExtractorWorker extends DataWorker {
         Element e = mutation.save(getAuthorizations());
         getGraph().flush();
 
-        getWorkQueueRepository().pushGraphPropertyQueue(
+        getWorkQueueRepository().pushOnDwQueue(
                 e,
                 "",
                 RawObjectSchema.RAW_SENTIMENT.getPropertyName(),

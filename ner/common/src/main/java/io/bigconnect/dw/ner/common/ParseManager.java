@@ -43,6 +43,7 @@ import com.bericotech.clavin.gazetteer.query.LuceneGazetteer;
 import com.bericotech.clavin.resolver.ResolvedLocation;
 import com.google.gson.Gson;
 import com.mware.core.config.Configuration;
+import com.mware.ge.metric.GeMetricRegistry;
 import io.bigconnect.dw.ner.common.extractor.EntityExtractorService;
 import io.bigconnect.dw.ner.common.extractor.ExtractedEntities;
 import io.bigconnect.dw.ner.common.extractor.SentenceLocationOccurrence;
@@ -105,21 +106,21 @@ public class ParseManager {
     }
 
     @SuppressWarnings({"rawtypes"})
-    public static HashMap getGeoNameInfo(int id, Configuration config) {
-        return getGeoNameInfo(id, true, config);
+    public static HashMap getGeoNameInfo(int id, Configuration config, GeMetricRegistry metricRegistry) {
+        return getGeoNameInfo(id, true, config, metricRegistry);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    public static HashMap getGeoNameInfo(int id, boolean withAncestry, Configuration config) {
+    public static HashMap getGeoNameInfo(int id, boolean withAncestry, Configuration config, GeMetricRegistry metricRegistry) {
         try {
             GeoName geoname = getGeoName(id);
-            HashMap info = writeGeoNameToHash(geoname, config);
+            HashMap info = writeGeoNameToHash(geoname, config, metricRegistry);
             if (withAncestry) {
                 HashMap childInfo = info;
                 GeoName child = geoname;
                 while (child.getParent() != null) {
                     GeoName parent = child.getParent();
-                    HashMap parentInfo = writeGeoNameToHash(parent, config);
+                    HashMap parentInfo = writeGeoNameToHash(parent, config, metricRegistry);
                     childInfo.put("parent", parentInfo);
                     child = parent;
                     childInfo = parentInfo;
@@ -133,130 +134,8 @@ public class ParseManager {
         }
     }
 
-    /**
-     * Public api method - call this statically to extract locations from a text string
-     *
-     * @param text unstructured text that you want to parse for location mentions
-     * @return json string with details about locations mentioned
-     */
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    public static HashMap parseFromText(String languageCode, String text, boolean manuallyReplaceDemonyms, Configuration config) {
-        long startTime = System.currentTimeMillis();
-        HashMap results = null;
-        if (text.trim().length() == 0) {
-            return getErrorText("No text");
-        }
-        try {
-            ExtractedEntities entities = extractAndResolve(config, languageCode, text, manuallyReplaceDemonyms);
-            results = parseFromEntities(entities, config);
-        } catch (Exception e) {
-            logger.error(e.toString(), e);
-            results = getErrorText(e.toString());
-        }
-        long endTime = System.currentTimeMillis();
-        long elapsedMillis = endTime - startTime;
-        results.put("milliseconds", elapsedMillis);
-        return results;
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    public static HashMap parseFromSentences(String languageCode, String jsonText, boolean manuallyReplaceDemonyms, Configuration config) {
-        long startTime = System.currentTimeMillis();
-        HashMap results = null;
-        if (jsonText.trim().length() == 0) {
-            return getErrorText("No text");
-        }
-        try {
-            Gson gson = new Gson();
-            Map[] sentences = gson.fromJson(jsonText, Map[].class);
-            ExtractedEntities entities = extractAndResolveFromSentences(config, languageCode, sentences, manuallyReplaceDemonyms);
-            results = parseFromEntities(entities, config);
-        } catch (Exception e) {
-            results = getErrorText(e.toString());
-        }
-        long endTime = System.currentTimeMillis();
-        long elapsedMillis = endTime - startTime;
-        results.put("milliseconds", elapsedMillis);
-        return results;
-    }
-
-    @SuppressWarnings({"rawtypes", "unchecked"})  // I'm generating JSON... don't whine!
-    public static HashMap parseFromEntities(ExtractedEntities entities, Configuration configuration) {
-        if (entities == null) {
-            return getErrorText("No place or person entitites detected in this text.");
-        }
-
-        logger.debug("Adding Mentions:");
-        HashMap results = new HashMap();
-        // assemble the "where" results
-        HashMap placeResults = new HashMap();
-        ArrayList resolvedPlaces = new ArrayList();
-        for (ResolvedLocation resolvedLocation : entities.getResolvedLocations()) {
-            HashMap loc = writeResolvedLocationToHash(resolvedLocation, configuration);
-            resolvedPlaces.add(loc);
-        }
-        placeResults.put("mentions", resolvedPlaces);
-
-        logger.debug("Adding Focus:");
-        HashMap focusResults = new HashMap();
-        if (resolvedPlaces.size() > 0) {
-            ArrayList focusLocationInfoList;
-            logger.debug("Adding Country Focus:");
-            focusLocationInfoList = new ArrayList<HashMap>();
-            for (FocusLocation loc : focusStrategy.selectCountries(entities.getResolvedLocations())) {
-                try {
-                    focusLocationInfoList.add(writeAboutnessLocationToHash(loc, configuration));
-                } catch (NullPointerException npe) {
-                    logger.warn("Got an about country with no Geoname info :-( ");
-                }
-            }
-            focusResults.put("countries", focusLocationInfoList);
-            logger.debug("Adding State Focus:");
-            focusLocationInfoList = new ArrayList<HashMap>();
-            for (FocusLocation loc : focusStrategy.selectStates(entities.getResolvedLocations())) {
-                focusLocationInfoList.add(writeAboutnessLocationToHash(loc, configuration));
-            }
-            focusResults.put("states", focusLocationInfoList);
-            logger.debug("Adding City Focus:");
-            focusLocationInfoList = new ArrayList<HashMap>();
-            for (FocusLocation loc : focusStrategy.selectCities(entities.getResolvedLocations())) {
-                focusLocationInfoList.add(writeAboutnessLocationToHash(loc, configuration));
-            }
-            focusResults.put("cities", focusLocationInfoList);
-        }
-        placeResults.put("focus", focusResults);
-        results.put("places", placeResults);
-
-        logger.debug("Adding People:");
-        // assemble the "who" results
-        List<ResolvedPerson> resolvedPeople = entities.getResolvedPeople();
-        List<HashMap> personResults = new ArrayList<HashMap>();
-        for (ResolvedPerson person : resolvedPeople) {
-            HashMap sourceInfo = new HashMap();
-            sourceInfo.put("name", person.getName());
-            sourceInfo.put("count", person.getOccurenceCount());
-            personResults.add(sourceInfo);
-        }
-        results.put("people", personResults);
-
-        logger.debug("Adding Organizations:");
-        // assemble the org results
-        List<ResolvedOrganization> resolvedOrganizations = entities.getResolvedOrganizations();
-        List<HashMap> organizationResults = new ArrayList<HashMap>();
-        for (ResolvedOrganization organization : resolvedOrganizations) {
-            HashMap sourceInfo = new HashMap();
-            sourceInfo.put("name", organization.getName());
-            sourceInfo.put("count", organization.getOccurenceCount());
-            organizationResults.add(sourceInfo);
-        }
-        results.put("organizations", organizationResults);
-
-        HashMap response = getResponseMap(results);
-        return response;
-    }
-
     @SuppressWarnings({"rawtypes", "unchecked"})
-    public static HashMap writeGeoNameToHash(GeoName place, Configuration configuration) {
+    public static HashMap writeGeoNameToHash(GeoName place, Configuration configuration, GeMetricRegistry metricRegistry) {
         HashMap loc = new HashMap();
         loc.put("id", place.getGeonameID());
         loc.put("name", place.getName());
@@ -272,7 +151,7 @@ public class ParseManager {
             primaryCountryCodeAlpha2 = place.getPrimaryCountryCode().toString();
         }
         loc.put("countryCode", primaryCountryCodeAlpha2);
-        GeoName countryGeoName = CountryGeoNameLookup.lookup(primaryCountryCodeAlpha2, configuration);
+        GeoName countryGeoName = CountryGeoNameLookup.lookup(primaryCountryCodeAlpha2, configuration, metricRegistry);
         String countryGeoNameId = "";
         if (countryGeoName != null) {
             countryGeoNameId = "" + countryGeoName.getGeonameID();
@@ -284,7 +163,7 @@ public class ParseManager {
             admin1Code = place.getAdmin1Code();
         }
         loc.put("stateCode", admin1Code);
-        GeoName adm1GeoName = Adm1GeoNameLookup.lookup(primaryCountryCodeAlpha2, admin1Code, configuration);
+        GeoName adm1GeoName = Adm1GeoNameLookup.lookup(primaryCountryCodeAlpha2, admin1Code, configuration, metricRegistry);
         String stateGeoNameId = "";
         if (adm1GeoName != null) {
             stateGeoNameId = "" + adm1GeoName.getGeonameID();
@@ -295,15 +174,15 @@ public class ParseManager {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    public static HashMap writeAboutnessLocationToHash(FocusLocation location, Configuration configuration) {
-        HashMap loc = writeGeoNameToHash(location.getGeoName(), configuration);
+    public static HashMap writeAboutnessLocationToHash(FocusLocation location, Configuration configuration, GeMetricRegistry metricRegistry) {
+        HashMap loc = writeGeoNameToHash(location.getGeoName(), configuration, metricRegistry);
         loc.put("score", location.getScore());
         return loc;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    public static HashMap writeResolvedLocationToHash(ResolvedLocation resolvedLocation, Configuration configuration) {
-        HashMap loc = writeGeoNameToHash(resolvedLocation.getGeoname(), configuration);
+    public static HashMap writeResolvedLocationToHash(ResolvedLocation resolvedLocation, Configuration configuration, GeMetricRegistry metricRegistry) {
+        HashMap loc = writeGeoNameToHash(resolvedLocation.getGeoname(), configuration, metricRegistry);
         int charIndex = resolvedLocation.getLocation().getPosition();
         loc.put("confidence", resolvedLocation.getConfidence()); // low is good
         HashMap sourceInfo = new HashMap();
@@ -316,17 +195,17 @@ public class ParseManager {
         return loc;
     }
 
-    public static ExtractedEntities extractAndResolve(Configuration config, String languageCode, String text) throws Exception {
-        return extractAndResolve(config, languageCode, text, false);
+    public static ExtractedEntities extractAndResolve(Configuration config, GeMetricRegistry metricRegistry, String languageCode, String text) throws Exception {
+        return extractAndResolve(config, metricRegistry, languageCode, text, false);
     }
 
-    public static ExtractedEntities extractAndResolve(Configuration config, String languageCode, String text, boolean manuallyReplaceDemonyms) throws Exception {
-        return getParserInstance(config).extractAndResolve(languageCode, text, manuallyReplaceDemonyms);
+    public static ExtractedEntities extractAndResolve(Configuration config, GeMetricRegistry metricRegistry, String languageCode, String text, boolean manuallyReplaceDemonyms) throws Exception {
+        return getParserInstance(config, metricRegistry).extractAndResolve(languageCode, text, manuallyReplaceDemonyms);
     }
 
     @SuppressWarnings("rawtypes")
-    public static ExtractedEntities extractAndResolveFromSentences(Configuration config, String languageCode, Map[] sentences, boolean manuallyReplaceDemonyms) throws Exception {
-        return getParserInstance(config).extractAndResolveFromSentences(languageCode, sentences, manuallyReplaceDemonyms);
+    public static ExtractedEntities extractAndResolveFromSentences(Configuration config, GeMetricRegistry metricRegistry, String languageCode, Map[] sentences, boolean manuallyReplaceDemonyms) throws Exception {
+        return getParserInstance(config, metricRegistry).extractAndResolveFromSentences(languageCode, sentences, manuallyReplaceDemonyms);
     }
 
     /**
@@ -353,12 +232,12 @@ public class ParseManager {
     /**
      * Lazy instantiation of singleton parser
      */
-    public static EntityParser getParserInstance(Configuration config) throws Exception {
+    public static EntityParser getParserInstance(Configuration config, GeMetricRegistry metricRegistry) throws Exception {
         if (parser == null) {
-            focusStrategy = new FrequencyOfMentionFocusStrategy(config);
+            focusStrategy = new FrequencyOfMentionFocusStrategy(config, metricRegistry);
             // use the Stanford NER location stanford
-            EntityExtractorService extractor = EntityExtractorService.getInstance(config);
-            extractor.initialize(config);
+            EntityExtractorService extractor = EntityExtractorService.getInstance(config, metricRegistry);
+            extractor.initialize(config, metricRegistry);
 
             boolean useFuzzyMatching = false;
             Gazetteer gazetteer = null;
@@ -372,7 +251,7 @@ public class ParseManager {
 
             resolver = new CliffLocationResolver(gazetteer);
 
-            parser = new EntityParser(extractor, resolver,
+            parser = new EntityParser(extractor, metricRegistry, resolver,
                     useFuzzyMatching, CliffLocationResolver.MAX_HIT_DEPTH);
 
             logger.info("Created parser successfully");
@@ -381,18 +260,18 @@ public class ParseManager {
         return parser;
     }
 
-    public static CliffLocationResolver getLocationResolver(Configuration configuration) throws Exception {
-        ParseManager.getParserInstance(configuration);
+    public static CliffLocationResolver getLocationResolver(Configuration configuration, GeMetricRegistry metricRegistry) throws Exception {
+        ParseManager.getParserInstance(configuration, metricRegistry);
         return resolver;
     }
 
-    public static FocusStrategy getFocusStrategy(Configuration configuration) throws Exception {
-        ParseManager.getParserInstance(configuration);
+    public static FocusStrategy getFocusStrategy(Configuration configuration, GeMetricRegistry metricRegistry) throws Exception {
+        ParseManager.getParserInstance(configuration, metricRegistry);
         return focusStrategy;
     }
 
-    public static CliffLocationResolver getResolver(Configuration configuration) throws Exception {
-        ParseManager.getParserInstance(configuration);
+    public static CliffLocationResolver getResolver(Configuration configuration, GeMetricRegistry metricRegistry) throws Exception {
+        ParseManager.getParserInstance(configuration, metricRegistry);
         return resolver;
     }
 }

@@ -162,7 +162,7 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
 
                                         logElement(vertex);
 
-                                        workQueueRepository.pushGraphPropertyQueue(
+                                        workQueueRepository.pushOnDwQueue(
                                                 vertex,
                                                 language.stringValue(),
                                                 RawObjectSchema.RAW_LANGUAGE.getPropertyName(),

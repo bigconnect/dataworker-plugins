@@ -117,7 +117,7 @@ public class EntityCreator {
     }
 
     public Element push(String property, String key) {
-        workQueueRepository.pushGraphPropertyQueue(
+        workQueueRepository.pushOnDwQueue(
                 element,
                 key,
                 property,

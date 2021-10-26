@@ -4,9 +4,6 @@ import com.mware.core.bootstrap.InjectHelper;
 import com.mware.core.cmdline.CommandLineTool;
 import com.mware.core.ingest.dataworker.DataWorkerMemoryTracer;
 import com.mware.core.process.DataWorkerRunnerProcess;
-import com.mware.core.status.model.QueueStatus;
-import com.mware.core.status.model.Status;
-import com.mware.core.status.model.Status.CounterMetric;
 import com.mware.ge.Element;
 import lombok.SneakyThrows;
 
@@ -47,10 +44,7 @@ public class DataWorkerTester extends CommandLineTool {
         Thread.sleep(1000);
         boolean hasMessages = true;
         while (hasMessages) {
-            Map<String, Status> queuesStatus = workQueueRepository.getQueuesStatus();
-            QueueStatus status = (QueueStatus) queuesStatus.values().iterator().next();
-            CounterMetric messages = (CounterMetric) status.getMetrics().get("messages");
-            hasMessages = messages.getCount() > 0;
+            hasMessages = workQueueRepository.getDwQueueSize() > 0;
             Thread.sleep(100);
         }
     }

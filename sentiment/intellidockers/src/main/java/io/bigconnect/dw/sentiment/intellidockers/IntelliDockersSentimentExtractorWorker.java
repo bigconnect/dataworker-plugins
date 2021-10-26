@@ -55,6 +55,8 @@ import com.mware.ge.Element;
 import com.mware.ge.Property;
 import com.mware.ge.Vertex;
 import com.mware.ge.Visibility;
+import com.mware.ge.metric.PausableTimerContext;
+import com.mware.ge.metric.Timer;
 import com.mware.ge.mutation.ElementMutation;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.StreamingPropertyValue;
@@ -86,6 +88,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     private boolean doParagraphs;
     private TermMentionRepository termMentionRepository;
     private TermMentionUtils termMentionUtils;
+    private Timer detectTimer;
 
     @Inject
     public IntelliDockersSentimentExtractorWorker(
@@ -109,6 +112,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
 
         this.doParagraphs = getConfiguration().getBoolean(CONFIG_INTELLIDOCKERS_PARAGRAPHS, true);
         this.termMentionUtils = new TermMentionUtils(getGraph(), getVisibilityTranslator(), getAuthorizations(), getUser());
+        this.detectTimer = getGraph().getMetricsRegistry().getTimer(getClass(), "sentiment-time");
     }
 
     @Override
@@ -148,7 +152,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         getGraph().flush();
 
         if (StringUtils.isEmpty(text)) {
-            getWorkQueueRepository().pushGraphPropertyQueue(
+            getWorkQueueRepository().pushOnDwQueue(
                     element,
                     "",
                     RawObjectSchema.RAW_SENTIMENT.getPropertyName(),
@@ -162,8 +166,11 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         }
 
         try {
+            PausableTimerContext t = new PausableTimerContext(detectTimer);
             Response<SentimentResponse> response = service.process(new SentimentRequest(text, "ron"))
                     .execute();
+            t.stop();
+
             if (response.isSuccessful() && response.body() != null) {
                 String sentiment = toBcSentiment(response.body());
                 m = element.prepareMutation();
@@ -213,7 +220,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
             LOGGER.warn("Could not extract sentiment: %s", e.getMessage());
         }
 
-        getWorkQueueRepository().pushGraphPropertyQueue(
+        getWorkQueueRepository().pushOnDwQueue(
                 element,
                 "",
                 RawObjectSchema.RAW_SENTIMENT.getPropertyName(),

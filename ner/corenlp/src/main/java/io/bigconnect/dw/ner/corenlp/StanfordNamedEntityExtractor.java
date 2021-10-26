@@ -40,6 +40,7 @@ import com.bericotech.clavin.extractor.LocationOccurrence;
 import com.mware.core.config.Configuration;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
+import com.mware.ge.metric.GeMetricRegistry;
 import edu.stanford.nlp.util.Triple;
 import io.bigconnect.dw.ner.common.extractor.*;
 import io.bigconnect.dw.ner.common.places.substitutions.Blacklist;
@@ -73,6 +74,7 @@ public class StanfordNamedEntityExtractor implements EntityExtractor {
     private CustomSubstitutionMap personToPlaceSubstitutions;
     private Blacklist locationBlacklist;
     private Configuration configuration;
+    private GeMetricRegistry metricRegistry;
     private Model model;
 
     // Don't change the order of this, unless you also change the default in the cliff.properties file
@@ -84,8 +86,9 @@ public class StanfordNamedEntityExtractor implements EntityExtractor {
         return "Stanford CoreNLP NER";
     }
 
-    public void initialize(Configuration configuration) throws ClassCastException, IOException, ClassNotFoundException {
+    public void initialize(Configuration configuration, GeMetricRegistry metricRegistry) throws ClassCastException, IOException, ClassNotFoundException {
         this.configuration = configuration;
+        this.metricRegistry = metricRegistry;
         String modelToUse = configuration.get(CONFIG_NER_MODEL, "ENGLISH_ALL_3CLASS");
         model = Model.valueOf(modelToUse);
         LOGGER.info("Creating Standford NER with " + modelToUse);
@@ -137,7 +140,7 @@ public class StanfordNamedEntityExtractor implements EntityExtractor {
      */
     @Override
     public ExtractedEntities extractEntities(String language, String textToParse, boolean manuallyReplaceDemonyms) {
-        ExtractedEntities entities = new ExtractedEntities(configuration);
+        ExtractedEntities entities = new ExtractedEntities(configuration, metricRegistry);
 
         if (textToParse == null || textToParse.length() == 0) {
             LOGGER.warn("input to extractEntities was null or zero!");
@@ -210,7 +213,7 @@ public class StanfordNamedEntityExtractor implements EntityExtractor {
     @Override
     @SuppressWarnings("rawtypes")
     public ExtractedEntities extractEntitiesFromSentences(String language, Map[] sentences, boolean manuallyReplaceDemonyms) {
-        ExtractedEntities entities = new ExtractedEntities(configuration);
+        ExtractedEntities entities = new ExtractedEntities(configuration, metricRegistry);
 
         if (sentences.length == 0) {
             LOGGER.warn("input to extractEntities was null or zero!");

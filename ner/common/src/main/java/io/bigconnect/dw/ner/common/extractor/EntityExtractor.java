@@ -37,6 +37,7 @@
 package io.bigconnect.dw.ner.common.extractor;
 
 import com.mware.core.config.Configuration;
+import com.mware.ge.metric.GeMetricRegistry;
 
 import java.io.IOException;
 import java.util.Map;
@@ -47,7 +48,7 @@ public interface EntityExtractor {
     @SuppressWarnings("rawtypes")
     ExtractedEntities extractEntitiesFromSentences(String language, Map[] sentences, boolean manuallyReplaceDemonyms);
 
-    void initialize(Configuration config) throws ClassCastException, IOException, ClassNotFoundException;
+    void initialize(Configuration config, GeMetricRegistry metricRegistry) throws ClassCastException, IOException, ClassNotFoundException;
 
     String getName();
 }

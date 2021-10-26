@@ -105,7 +105,7 @@ public class AudioMetadataPostMimeTypeWorker extends PostMimeTypeWorker {
         getGraph().flush();
 
         getWebQueueRepository().broadcastPropertiesChange(e, changedProperties, null, data.getPriority());
-        getWorkQueueRepository().pushGraphPropertyQueue(
+        getWorkQueueRepository().pushOnDwQueue(
                 e,
                 changedProperties,
                 null,

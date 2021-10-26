@@ -55,6 +55,8 @@ import com.mware.core.model.workQueue.Priority;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
 import com.mware.ge.*;
+import com.mware.ge.metric.PausableTimerContext;
+import com.mware.ge.metric.Timer;
 import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
@@ -88,6 +90,7 @@ public class GoogleTranslateDataWorker extends DataWorker {
     private LocationName locationName;
     private LanguageDetectorUtil languageDetector;
     private SystemNotificationRepository systemNotificationRepository;
+    private Timer detectTimer;
 
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
@@ -103,7 +106,8 @@ public class GoogleTranslateDataWorker extends DataWorker {
                 "No translations supported for language: " + targetLanguage);
 
         locationName = LocationName.of(GoogleCredentialUtils.getProjectId(), "global");
-        this.languageDetector = new LanguageDetectorUtil();
+        languageDetector = new LanguageDetectorUtil();
+        detectTimer = getGraph().getMetricsRegistry().getTimer(getClass(), "translate-time");
     }
 
     @Override
@@ -171,7 +175,9 @@ public class GoogleTranslateDataWorker extends DataWorker {
                             .setTargetLanguageCode(targetLanguage)
                             .addContents(title)
                             .build();
+                    PausableTimerContext t = new PausableTimerContext(detectTimer);
                     TranslateTextResponse response = googleClient.translateText(req);
+                    t.stop();
                     String translatedText = response.getTranslationsList().get(0).getTranslatedText();
                     PropertyMetadata propertyMetadata = new PropertyMetadata(getUser(), new VisibilityJson(), Visibility.EMPTY);
                     BcSchema.TEXT_LANGUAGE_METADATA.setMetadata(propertyMetadata, targetLanguage, Visibility.EMPTY);
@@ -229,7 +235,10 @@ public class GoogleTranslateDataWorker extends DataWorker {
                             .addContents(text)
                             .build();
 
+                    PausableTimerContext t = new PausableTimerContext(detectTimer);
                     TranslateTextResponse response = googleClient.translateText(req);
+                    t.stop();
+
                     String translatedText = response.getTranslationsList().get(0).getTranslatedText();
 
                     PropertyMetadata propertyMetadata = new PropertyMetadata(getUser(), new VisibilityJson(), Visibility.EMPTY);
@@ -254,7 +263,7 @@ public class GoogleTranslateDataWorker extends DataWorker {
 
                     getGraph().flush();
 
-                    getWorkQueueRepository().pushGraphPropertyQueue(
+                    getWorkQueueRepository().pushOnDwQueue(
                             element,
                             newTextPropertyKey,
                             RawObjectSchema.RAW_LANGUAGE.getPropertyName(),

@@ -41,6 +41,7 @@ import com.bericotech.clavin.gazetteer.CountryCode;
 import com.bericotech.clavin.gazetteer.GeoName;
 import com.bericotech.clavin.resolver.ResolvedLocation;
 import com.mware.core.config.Configuration;
+import com.mware.ge.metric.GeMetricRegistry;
 import io.bigconnect.dw.ner.common.people.ResolvedPerson;
 import io.bigconnect.dw.ner.common.places.CountryGeoNameLookup;
 import io.bigconnect.dw.ner.common.orgs.ResolvedOrganization;
@@ -65,8 +66,9 @@ public class ExtractedEntities {
     private List<GenericOccurrence> otherEntities;
 
     private Configuration configuration;
+    private GeMetricRegistry metricRegistry;
 
-    public ExtractedEntities(Configuration configuration) {
+    public ExtractedEntities(Configuration configuration, GeMetricRegistry metricRegistry) {
         this.configuration = configuration;
         locations = new ArrayList<>();
         resolvedPeople = new ArrayList<>();
@@ -75,6 +77,7 @@ public class ExtractedEntities {
         organizations = new ArrayList<>();
         resolvedOrganizations = new ArrayList<>();
         otherEntities = new ArrayList<>();
+        this.metricRegistry = metricRegistry;
     }
 
     /**
@@ -141,7 +144,7 @@ public class ExtractedEntities {
     }
 
     public List<GeoName> getUniqueCountryGeoNames() {
-        return getUniqueCountryGeoNames(resolvedLocations, configuration);
+        return getUniqueCountryGeoNames(resolvedLocations, configuration, metricRegistry);
     }
 
     public static List<CountryCode> getUniqueCountries(List<ResolvedLocation> resolvedLocations) {
@@ -158,11 +161,11 @@ public class ExtractedEntities {
         return countries;
     }
 
-    public static List<GeoName> getUniqueCountryGeoNames(List<ResolvedLocation> resolvedLocations, Configuration configuration) {
+    public static List<GeoName> getUniqueCountryGeoNames(List<ResolvedLocation> resolvedLocations, Configuration configuration, GeMetricRegistry metricRegistry) {
         List<CountryCode> countryCodes = getUniqueCountries(resolvedLocations);
         List<GeoName> geoNames = new ArrayList<>();
         for (CountryCode countryCode : countryCodes) {
-            geoNames.add(CountryGeoNameLookup.lookup(countryCode.name(), configuration));
+            geoNames.add(CountryGeoNameLookup.lookup(countryCode.name(), configuration, metricRegistry));
         }
         return geoNames;
     }

@@ -38,6 +38,7 @@ package io.bigconnect.dw.ner.common.util;
 
 import com.google.gson.Gson;
 import com.mware.core.config.Configuration;
+import com.mware.ge.metric.GeMetricRegistry;
 import io.bigconnect.dw.ner.common.extractor.ExtractedEntities;
 import io.bigconnect.dw.ner.common.extractor.OrganizationOccurrence;
 import io.bigconnect.dw.ner.common.extractor.PersonOccurrence;
@@ -50,9 +51,9 @@ import java.util.Map;
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class MuckUtils {
 
-    public static ExtractedEntities entitiesFromNlpJsonString(String nlpJsonString, Configuration configuration) {
+    public static ExtractedEntities entitiesFromNlpJsonString(String nlpJsonString, Configuration configuration, GeMetricRegistry metricRegistry) {
         Map sentences = sentencesFromJsonString(nlpJsonString);
-        return entitiesFromNlpSentenceMap(sentences, configuration);
+        return entitiesFromNlpSentenceMap(sentences, configuration, metricRegistry);
     }
 
     public static Map sentencesFromJsonString(String nlpJsonString) {
@@ -61,8 +62,8 @@ public class MuckUtils {
         return content;
     }
 
-    private static ExtractedEntities entitiesFromNlpSentenceMap(Map mcSentences, Configuration configuration) {
-        ExtractedEntities entities = new ExtractedEntities(configuration);
+    private static ExtractedEntities entitiesFromNlpSentenceMap(Map mcSentences, Configuration configuration, GeMetricRegistry metricRegistry) {
+        ExtractedEntities entities = new ExtractedEntities(configuration, metricRegistry);
         Iterator it = mcSentences.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry pairs = (Map.Entry) it.next();

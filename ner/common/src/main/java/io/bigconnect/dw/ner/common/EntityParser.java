@@ -37,6 +37,7 @@
 package io.bigconnect.dw.ner.common;
 
 import com.bericotech.clavin.resolver.ResolvedLocation;
+import com.mware.ge.metric.GeMetricRegistry;
 import io.bigconnect.dw.ner.common.extractor.EntityExtractorService;
 import io.bigconnect.dw.ner.common.extractor.ExtractedEntities;
 import io.bigconnect.dw.ner.common.orgs.OrganizationResolver;
@@ -62,6 +63,7 @@ public class EntityParser {
     // entity stanford to find location names in text
     private EntityExtractorService extractor;
 
+    private final GeMetricRegistry metricRegistry;
     private CliffLocationResolver locationResolver;
     private PersonResolver personResolver;
     private OrganizationResolver organizationResolver;
@@ -72,11 +74,13 @@ public class EntityParser {
 
     public EntityParser(
             EntityExtractorService extractor,
+            GeMetricRegistry metricRegistry,
             CliffLocationResolver resolver,
             boolean fuzzy,
             int maxHitDepth
     ) {
         this.extractor = extractor;
+        this.metricRegistry = metricRegistry;
         this.locationResolver = resolver;
         this.personResolver = new PersonResolver();
         this.organizationResolver = new OrganizationResolver();

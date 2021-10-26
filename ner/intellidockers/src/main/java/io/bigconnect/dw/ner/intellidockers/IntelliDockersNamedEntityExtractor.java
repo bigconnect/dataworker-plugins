@@ -40,6 +40,9 @@ import com.bericotech.clavin.extractor.LocationOccurrence;
 import com.mware.core.config.Configuration;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
+import com.mware.ge.metric.GeMetricRegistry;
+import com.mware.ge.metric.PausableTimerContext;
+import com.mware.ge.metric.Timer;
 import com.mware.ge.util.Preconditions;
 import io.bigconnect.dw.ner.common.extractor.*;
 import io.bigconnect.dw.ner.common.places.substitutions.WikipediaDemonymMap;
@@ -62,10 +65,13 @@ public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
     private Configuration configuration;
     private WikipediaDemonymMap demonyms;
     private IntelliDockersNer service;
+    private GeMetricRegistry metricRegistry;
+    private Timer detectTimer;
 
     @Override
-    public void initialize(Configuration config) throws ClassCastException {
+    public void initialize(Configuration config, GeMetricRegistry metricRegistry) throws ClassCastException {
         this.configuration = config;
+        this.metricRegistry = metricRegistry;
         demonyms = new WikipediaDemonymMap();
         String url = config.get(CONFIG_INTELLIDOCKERS_URL, null);
         Preconditions.checkState(!StringUtils.isEmpty(url), "Please provide the '" + CONFIG_INTELLIDOCKERS_URL + "' config parameter");
@@ -83,11 +89,12 @@ public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
                 .build();
 
         service = retrofit.create(IntelliDockersNer.class);
+        detectTimer = metricRegistry.getTimer(getClass(), "ner-time");
     }
 
     @Override
     public ExtractedEntities extractEntities(String language, String textToParse, boolean manuallyReplaceDemonyms) {
-        ExtractedEntities entities = new ExtractedEntities(configuration);
+        ExtractedEntities entities = new ExtractedEntities(configuration, metricRegistry);
         if (textToParse == null || textToParse.length() == 0) {
             LOGGER.warn("input to extractEntities was null or zero!");
             return entities;
@@ -105,8 +112,10 @@ public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
         }
 
         try {
+            PausableTimerContext t = new PausableTimerContext(detectTimer);
             Response<Entities> response = service.process(new NerRequest(text, "ron"))
                     .execute();
+            t.stop();
 
             if (response.isSuccessful() && response.body() != null) {
                 for (Entities.Entity entity : response.body().entities) {

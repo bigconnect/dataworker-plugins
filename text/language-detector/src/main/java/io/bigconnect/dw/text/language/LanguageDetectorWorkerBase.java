@@ -36,14 +36,10 @@
  */
 package io.bigconnect.dw.text.language;
 
-import com.github.pemistahl.lingua.api.IsoCode639_1;
-import com.github.pemistahl.lingua.api.Language;
 import com.mware.core.ingest.dataworker.DataWorker;
 import com.mware.core.ingest.dataworker.DataWorkerData;
 import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
 import com.mware.core.ingest.dataworker.ElementOrPropertyStatus;
-import com.mware.core.model.Description;
-import com.mware.core.model.Name;
 import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
 import com.mware.core.util.BcLogger;
@@ -52,29 +48,25 @@ import com.mware.ge.Element;
 import com.mware.ge.Property;
 import com.mware.ge.Vertex;
 import com.mware.ge.Visibility;
+import com.mware.ge.metric.PausableTimerContext;
+import com.mware.ge.metric.Timer;
 import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.values.storable.Values;
-import io.bigconnect.dw.text.common.LanguageDetectorUtil;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 
-@Name("Text Language Detector")
-@Description("Detect the language of a piece of text")
-public class LanguageDetectorWorker extends DataWorker {
-    private static final BcLogger LOGGER = BcLoggerFactory.getLogger(LanguageDetectorWorker.class);
-    private LanguageDetectorUtil languageDetector;
+public abstract class LanguageDetectorWorkerBase extends DataWorker {
+    protected static final BcLogger LOGGER = BcLoggerFactory.getLogger(LanguageDetectorWorkerBase.class);
+    private Timer detectTimer;
 
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
         super.prepare(workerPrepareData);
-        this.languageDetector = new LanguageDetectorUtil();
+        detectTimer = getGraph().getMetricsRegistry().getTimer(getClass(), "language-detect-time");
     }
 
     @Override
@@ -96,7 +88,10 @@ public class LanguageDetectorWorker extends DataWorker {
                 return;
             }
 
-            Optional<String> language = languageDetector.detectLanguage(text);
+            PausableTimerContext t = new PausableTimerContext(detectTimer);
+            Optional<String> language = detectLanguage(text);
+            t.stop();
+
             if (language.isPresent()) {
                 // set the new language
                 ExistingElementMutation<Vertex> m = refresh(data.getElement()).prepareMutation();
@@ -110,7 +105,7 @@ public class LanguageDetectorWorker extends DataWorker {
                 Element e = m.save(getAuthorizations());
                 getGraph().flush();
 
-                getWorkQueueRepository().pushGraphPropertyQueue(
+                getWorkQueueRepository().pushOnDwQueue(
                         e,
                         data.getProperty().getKey(),
                         RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
@@ -124,7 +119,11 @@ public class LanguageDetectorWorker extends DataWorker {
             }
         } else if (BcSchema.TITLE.isSameName(data.getProperty())) {
             String title = BcSchema.TITLE.getFirstPropertyValue(data.getElement());
-            Optional<String> language = languageDetector.detectLanguage(title);
+
+            PausableTimerContext t = new PausableTimerContext(detectTimer);
+            Optional<String> language = detectLanguage(title);
+            t.stop();
+
             if (language.isPresent()) {
                 // set the new language
                 ExistingElementMutation<Vertex> m = refresh(data.getElement()).prepareMutation();
@@ -133,7 +132,7 @@ public class LanguageDetectorWorker extends DataWorker {
                 Element e = m.save(getAuthorizations());
                 getGraph().flush();
 
-                getWorkQueueRepository().pushGraphPropertyQueue(
+                getWorkQueueRepository().pushOnDwQueue(
                         e,
                         data.getProperty().getKey(),
                         RawObjectSchema.TITLE_LANGUAGE.getPropertyName(),
@@ -148,12 +147,10 @@ public class LanguageDetectorWorker extends DataWorker {
         }
     }
 
-    public static Set<String> getSupportedLanguages() {
-        List<Language> languages = Language.Companion.allSpokenOnes();
-        return languages.stream()
-                .map(Language::getIsoCode639_1)
-                .map(IsoCode639_1::name)
-                .map(String::toLowerCase)
-                .collect(Collectors.toSet());
-    }
+    /**
+     * Performs language detection
+     * @param text input text
+     * @return the 2-letter language code
+     */
+    public abstract Optional<String> detectLanguage(String text);
 }

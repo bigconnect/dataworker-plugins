@@ -128,7 +128,7 @@ public class FacebookUrlEngagementWorker extends DataWorker {
                     data.getPriority()
             );
 
-            getWorkQueueRepository().pushGraphPropertyQueue(
+            getWorkQueueRepository().pushOnDwQueue(
                     element,
                     changedProperties,
                     data.getWorkspaceId(),

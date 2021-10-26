@@ -155,7 +155,7 @@ public class FaceDescriptorDataWorker extends DataWorker {
             PROCESSED_PROPERTY.addPropertyValue(edge, "", Boolean.TRUE,
                     data.createPropertyMetadata(getUser()), getVisibilityTranslator().getDefaultVisibility(), getAuthorizations());
             getWebQueueRepository().broadcastPropertyChange(edge, "", PROCESSED_PROPERTY.getPropertyName(), data.getWorkspaceId());
-            getWorkQueueRepository().pushGraphPropertyQueue(
+            getWorkQueueRepository().pushOnDwQueue(
                     edge,
                     "",
                     PROCESSED_PROPERTY.getPropertyName(),
@@ -197,7 +197,7 @@ public class FaceDescriptorDataWorker extends DataWorker {
             getGraph().flush();
 
             getWebQueueRepository().broadcastPropertyChange(vertex, descriptor, FACE_DESCRIPTOR.getPropertyName(), null);
-            getWorkQueueRepository().pushGraphPropertyQueue(
+            getWorkQueueRepository().pushOnDwQueue(
                     vertex,
                     descriptor,
                     FACE_DESCRIPTOR.getPropertyName(),
