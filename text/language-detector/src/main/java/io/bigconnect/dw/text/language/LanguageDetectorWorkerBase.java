@@ -105,6 +105,7 @@ public abstract class LanguageDetectorWorkerBase extends DataWorker {
                 Element e = m.save(getAuthorizations());
                 getGraph().flush();
 
+                LOGGER.debug("Language set for: "+e.getId()+" - "+language.get());
                 getWorkQueueRepository().pushOnDwQueue(
                         e,
                         data.getProperty().getKey(),

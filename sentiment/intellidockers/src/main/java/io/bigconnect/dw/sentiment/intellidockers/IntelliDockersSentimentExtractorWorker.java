@@ -127,6 +127,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         if (property.getName().equals(RawObjectSchema.RAW_LANGUAGE.getPropertyName())) {
             // do entity extraction only if language is set
             String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
+            LOGGER.debug("Got language for: "+element.getId()+" - "+language);
             return !StringUtils.isEmpty(language) && "ro".equals(language);
         }
 
@@ -166,6 +167,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         }
 
         try {
+            LOGGER.info("Extract sentiment for: "+element.getId());
             PausableTimerContext t = new PausableTimerContext(detectTimer);
             Response<SentimentResponse> response = service.process(new SentimentRequest(text, "ron"))
                     .execute();
@@ -173,12 +175,15 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
 
             if (response.isSuccessful() && response.body() != null) {
                 String sentiment = toBcSentiment(response.body());
+                LOGGER.debug("Sentiment for: "+element.getId()+" is: "+sentiment);
                 m = element.prepareMutation();
                 com.mware.ge.Metadata metadata = data.createPropertyMetadata(getUser());
                 m.setProperty(RawObjectSchema.RAW_SENTIMENT.getPropertyName(), Values.stringValue(sentiment), metadata, data.getVisibility());
                 element = m.save(getAuthorizations());
 
                 getGraph().flush();
+            } else {
+                LOGGER.info("Could not extract sentiment for: "+element.getId()+": "+response.code()+" - "+response.errorBody());
             }
 
             if (doParagraphs) {

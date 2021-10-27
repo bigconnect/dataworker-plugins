@@ -133,9 +133,11 @@ public class EntityExtractionDataWorker extends DataWorker {
         try {
             Vertex outVertex = (Vertex) refresh(data.getElement());
 
+            LOGGER.debug("Extracting entities for: "+data.getElement().getId());
             NerUtils.removeEntityTermMentions(outVertex, termMentionRepository, termMentionUtils, getGraph(), getAuthorizations());
             ExtractedEntities entities = ParseManager.extractAndResolve(getConfiguration(), getGraph().getMetricsRegistry(), language, text);
             if (entities != null) {
+                LOGGER.debug("Adding entities to: "+data.getElement().getId());
                 VisibilityJson tmVisibilityJson = new VisibilityJson();
                 tmVisibilityJson.setSource("");
 
@@ -147,7 +149,7 @@ public class EntityExtractionDataWorker extends DataWorker {
 
                 pushTextUpdated(data);
             } else {
-                LOGGER.debug("No entities extracted");
+                LOGGER.info("No entities extracted for: "+data.getElement().getId());
             }
         } catch (Exception e) {
             LOGGER.error("Error extracting entities: "+e.getMessage(), e);
