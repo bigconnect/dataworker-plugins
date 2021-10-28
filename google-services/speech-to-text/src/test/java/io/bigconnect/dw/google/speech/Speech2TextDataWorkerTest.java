@@ -75,10 +75,4 @@ public class Speech2TextDataWorkerTest extends InMemoryGraphTestBase {
 
         Assert.assertTrue(GOOGLE_S2T_DONE_PROPERTY.getPropertyValue(v, false));
     }
-
-    @Test
-    public void testUtf8StringCleaning() {
-        String str = "\u0012u\nl\netoate tipurile de vaccin România menține aceeași opinie campania de vaccinare trebuie să continue\u0015�\b_?*\u0005ro-ro\u001A\u0002\b\u000F";
-
-    }
 }

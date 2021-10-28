@@ -114,14 +114,14 @@ public class NerUtils {
                 start = m.end();
             }
         }
+
+        if (start < text.length()) {
+            result.add(new TextSpan(start, text.length(), text.substring(start)));
+        }
+
         if (result.isEmpty() && text.trim().length() > 0)
             result.add(new TextSpan(0, text.length(), text));
 
         return result;
-    }
-
-    public static void main(String[] args) {
-        List<TextSpan> p = getParagraphs("\r\nSentence1\nSentence2\n\nSentence3\nSentence4\r\nSentence5\r\n\r\n");
-        System.out.println(p.size());
     }
 }

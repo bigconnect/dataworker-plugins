@@ -36,6 +36,7 @@
  */
 package io.bigconnect.dw.sentiment.intellidockers;
 
+import com.mware.core.exception.BcException;
 import com.mware.core.ingest.dataworker.DataWorker;
 import com.mware.core.ingest.dataworker.DataWorkerData;
 import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
@@ -45,10 +46,8 @@ import com.mware.core.model.Name;
 import com.mware.core.model.clientapi.dto.VisibilityJson;
 import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
-import com.mware.core.model.schema.SchemaConstants;
 import com.mware.core.model.termMention.TermMentionBuilder;
 import com.mware.core.model.termMention.TermMentionRepository;
-import com.mware.core.model.termMention.TermMentionUtils;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
 import com.mware.ge.Element;
@@ -66,12 +65,13 @@ import io.bigconnect.dw.text.common.NerUtils;
 import io.bigconnect.dw.text.common.TextSpan;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import retrofit2.Call;
+import retrofit2.Callback;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
 
 import javax.inject.Inject;
-import java.awt.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -87,7 +87,6 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     private IntelliDockersSentiment service;
     private boolean doParagraphs;
     private TermMentionRepository termMentionRepository;
-    private TermMentionUtils termMentionUtils;
     private Timer detectTimer;
 
     @Inject
@@ -111,7 +110,6 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         service = retrofit.create(IntelliDockersSentiment.class);
 
         this.doParagraphs = getConfiguration().getBoolean(CONFIG_INTELLIDOCKERS_PARAGRAPHS, true);
-        this.termMentionUtils = new TermMentionUtils(getGraph(), getVisibilityTranslator(), getAuthorizations(), getUser());
         this.detectTimer = getGraph().getMetricsRegistry().getTimer(getClass(), "sentiment-time");
     }
 
