@@ -38,12 +38,15 @@ package io.bigconnect.dw.google.speech;
 
 import com.google.api.gax.rpc.ApiException;
 import com.google.cloud.speech.v1.SpeechClient;
+import com.google.cloud.speech.v1p1beta1.LongRunningRecognizeResponse;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageOptions;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.longrunning.Operation;
 import com.google.longrunning.OperationsClient;
+import com.google.protobuf.Any;
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.mware.core.config.Configuration;
 import com.mware.core.ingest.dataworker.ElementOrPropertyStatus;
 import com.mware.core.lifecycle.LifeSupportService;
@@ -134,51 +137,65 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
                                     if (operation.getDone()) {
                                         LOGGER.debug("Google operation %s finished", operationName);
 
-                                        final String resultedText = operation.getResponse().getValue().toStringUtf8();
-
-                                        PropertyMetadata propertyMetadata = new PropertyMetadata(
-                                                new SystemUser(), new VisibilityJson(), Visibility.EMPTY
-                                        );
-                                        propertyMetadata.add(BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(), language, Visibility.EMPTY);
-                                        BcSchema.TEXT.addPropertyValue(
-                                                vertex,
-                                                language.stringValue(),
-                                                DefaultStreamingPropertyValue.create(resultedText),
-                                                propertyMetadata.createMetadata(), Visibility.EMPTY, vertex.getAuthorizations()
-                                        );
-
-                                        // add also the new language
-                                        RawObjectSchema.RAW_LANGUAGE.addPropertyValue(vertex, language.stringValue(), language.stringValue(),
-                                                null, Visibility.EMPTY, vertex.getAuthorizations());
-
-                                        webQueueRepository.pushTextUpdated(vertex.getId(), Priority.HIGH);
-
-                                        GOOGLE_S2T_PROGRESS_PROPERTY.setProperty(vertex, Boolean.FALSE, Visibility.EMPTY, vertex.getAuthorizations());
-                                        GOOGLE_S2T_DONE_PROPERTY.setProperty(vertex, Boolean.TRUE, Visibility.EMPTY, vertex.getAuthorizations());
-                                        OPERATION_NAME.removeProperty(vertex, AUTHORIZATIONS_ALL);
-
-                                        // Cleanup
-                                        graph.flush();
-
-                                        logElement(vertex);
-
-                                        workQueueRepository.pushOnDwQueue(
-                                                vertex,
-                                                language.stringValue(),
-                                                RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
-                                                null,
-                                                null,
-                                                Priority.HIGH,
-                                                ElementOrPropertyStatus.UPDATE,
-                                                null
-                                        );
-
-                                        final String meta = client.getOperation(operationName).getMetadata().getValue().toStringUtf8();
-                                        if (!StringUtils.isEmpty(meta)) {
-                                            String[] gcsUrl = meta.split("/");
-                                            if (gcsUrl.length > 0) {
-                                                storage.delete(bucketName, gcsUrl[gcsUrl.length - 1]);
+                                        try {
+                                            String resultedText = "";
+                                            LongRunningRecognizeResponse opResponse = LongRunningRecognizeResponse.parseFrom(
+                                                    operation.getResponse().getValue()
+                                            );
+                                            if (opResponse.getResultsCount() > 0) {
+                                                // get first resutlt
+                                                if (opResponse.getResults(0).getAlternativesCount() > 0) {
+                                                    resultedText = opResponse.getResults(0).getAlternatives(0).getTranscript();
+                                                }
                                             }
+
+                                            PropertyMetadata propertyMetadata = new PropertyMetadata(
+                                                    new SystemUser(), new VisibilityJson(), Visibility.EMPTY
+                                            );
+                                            propertyMetadata.add(BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(), language, Visibility.EMPTY);
+                                            BcSchema.TEXT.addPropertyValue(
+                                                    vertex,
+                                                    language.stringValue(),
+                                                    DefaultStreamingPropertyValue.create(resultedText),
+                                                    propertyMetadata.createMetadata(), Visibility.EMPTY, vertex.getAuthorizations()
+                                            );
+
+                                            // add also the new language
+                                            RawObjectSchema.RAW_LANGUAGE.addPropertyValue(vertex, language.stringValue(), language.stringValue(),
+                                                    null, Visibility.EMPTY, vertex.getAuthorizations());
+
+                                            webQueueRepository.pushTextUpdated(vertex.getId(), Priority.HIGH);
+
+                                            GOOGLE_S2T_PROGRESS_PROPERTY.setProperty(vertex, Boolean.FALSE, Visibility.EMPTY, vertex.getAuthorizations());
+                                            GOOGLE_S2T_DONE_PROPERTY.setProperty(vertex, Boolean.TRUE, Visibility.EMPTY, vertex.getAuthorizations());
+                                            OPERATION_NAME.removeProperty(vertex, AUTHORIZATIONS_ALL);
+
+                                            // Cleanup
+                                            graph.flush();
+
+                                            logElement(vertex);
+
+                                            workQueueRepository.pushOnDwQueue(
+                                                    vertex,
+                                                    language.stringValue(),
+                                                    RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
+                                                    null,
+                                                    null,
+                                                    Priority.HIGH,
+                                                    ElementOrPropertyStatus.UPDATE,
+                                                    null
+                                            );
+
+                                            final String meta = client.getOperation(operationName).getMetadata().getValue().toStringUtf8();
+                                            if (!StringUtils.isEmpty(meta)) {
+                                                String[] gcsUrl = meta.split("/");
+                                                if (gcsUrl.length > 0) {
+                                                    storage.delete(bucketName, gcsUrl[gcsUrl.length - 1]);
+                                                }
+                                            }
+
+                                        } catch (InvalidProtocolBufferException e) {
+                                            LOGGER.error("Received invalid response from Google", e);
                                         }
                                     }
                                 } catch (ApiException ex) {

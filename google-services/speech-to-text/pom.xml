@@ -33,6 +33,22 @@
             <artifactId>av-utils</artifactId>
             <version>${project.version}</version>
         </dependency>
+
+        <!-- testing -->
+        <dependency>
+            <groupId>io.bigconnect</groupId>
+            <artifactId>test</artifactId>
+            <version>${bigconnect.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.bigconnect</groupId>
+            <artifactId>core</artifactId>
+            <type>test-jar</type>
+            <version>${bigconnect.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 </project>
