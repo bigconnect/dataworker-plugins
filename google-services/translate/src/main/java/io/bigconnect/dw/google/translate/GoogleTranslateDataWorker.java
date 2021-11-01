@@ -71,6 +71,7 @@ import io.bigconnect.dw.text.common.TextPropertyHelper;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.time.DateUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -287,18 +288,7 @@ public class GoogleTranslateDataWorker extends DataWorker {
                     return true;
                 } catch (Exception ex) {
                     if (ex instanceof ResourceExhaustedException) {
-                        Date startDate = new Date();
-                        Date endDate = new Date();
-                        DateUtils.setHours(endDate, 23);
-                        DateUtils.setMinutes(endDate, 59);
-                        String ddMM = new SimpleDateFormat("dd/MM").format(startDate);
-                        SystemNotification notif = systemNotificationRepository.createNotification(
-                                SystemNotificationSeverity.WARNING,
-                                "Google Translate Daily Limit",
-                                ddMM + ": The daily limit for Google Translate has been reached.",
-                                null, startDate, endDate, null
-                        );
-                        getWebQueueRepository().pushSystemNotification(notif);
+                        sendQuotaExceededNotification();
                     }
 
                     LOGGER.warn("Could not perform translation: " + ex.getMessage());
@@ -314,6 +304,28 @@ public class GoogleTranslateDataWorker extends DataWorker {
 
         // success
         return true;
+    }
+
+    private void sendQuotaExceededNotification() {
+        long count = systemNotificationRepository.getActiveNotifications(null)
+                .stream().filter(n -> "translateQuota".equals(n.getActionEvent()))
+                .count();
+
+        if (count == 0) {
+            Date startDate = new Date();
+            Date endDate = new Date();
+            DateUtils.setHours(endDate, 23);
+            DateUtils.setMinutes(endDate, 59);
+            String ddMM = new SimpleDateFormat("dd/MM").format(startDate);
+            SystemNotification notif = systemNotificationRepository.createNotification(
+                    SystemNotificationSeverity.WARNING,
+                    "Google Translate Daily Limit",
+                    ddMM + ": The daily limit for Google Translate has been reached.",
+                    "translateQuota", new JSONObject(), startDate, endDate, null
+            );
+
+            getWebQueueRepository().pushSystemNotification(notif);
+        }
     }
 
     private List<Property> findKeyedPropertiesToTranslate(Element element, BcProperty<?> propertyToTranslate) {
