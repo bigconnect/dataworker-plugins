@@ -36,6 +36,7 @@
  */
 package io.bigconnect.dw.google.translate;
 
+import com.github.pemistahl.lingua.api.IsoCode639_1;
 import com.google.api.gax.rpc.ResourceExhaustedException;
 import com.google.cloud.translate.v3beta1.*;
 import com.google.inject.Inject;
@@ -77,10 +78,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static io.bigconnect.dw.google.translate.GoogleTranslateSchemaContribution.GOOGLE_TRANSLATE_PROPERTY;
@@ -336,7 +334,9 @@ public class GoogleTranslateDataWorker extends DataWorker {
             if (StringUtils.isEmpty(titleLanguage)) {
                 titleLanguage = languageDetector
                         .detectLanguage((String) property.getValue().asObjectCopy())
-                        .orElse("");
+                        .map(IsoCode639_1::name)
+                        .map(String::toLowerCase)
+                        .orElse(null);
                 if (!StringUtils.isEmpty(titleLanguage)) {
                     ExistingElementMutation<Vertex> m = element.prepareMutation();
                     m.setPropertyMetadata(property, BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
