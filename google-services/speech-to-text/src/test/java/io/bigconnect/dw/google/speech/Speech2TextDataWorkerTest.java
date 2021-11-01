@@ -23,6 +23,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.ByteArrayInputStream;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.util.Collections;
 
@@ -51,7 +52,6 @@ public class Speech2TextDataWorkerTest extends InMemoryGraphTestBase {
                 .setProperty(BcSchema.RAW.getPropertyName(), new DefaultStreamingPropertyValue(new ByteArrayInputStream(bytes), ByteArray.class), Visibility.EMPTY)
                 .save(AUTHS);
         videoFile.close();
-
 
         SpeechToTextDataWorker dw = new SpeechToTextDataWorker(getConfiguration(), monitorService);
         dw.setGraph(getGraph());

@@ -37,6 +37,7 @@
 package io.bigconnect.dw.google.speech;
 
 import com.google.api.gax.rpc.ApiException;
+import com.google.cloud.speech.v1.LongRunningRecognizeMetadata;
 import com.google.cloud.speech.v1.SpeechClient;
 import com.google.cloud.speech.v1p1beta1.LongRunningRecognizeResponse;
 import com.google.cloud.storage.Storage;
@@ -75,6 +76,7 @@ import io.bigconnect.dw.google.common.schema.GoogleSchemaContribution;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
+import java.time.Instant;
 
 import static io.bigconnect.dw.google.common.schema.GoogleSchemaContribution.OPERATION_NAME;
 import static io.bigconnect.dw.google.speech.Speech2TextSchemaContribution.GOOGLE_S2T_DONE_PROPERTY;
@@ -85,7 +87,7 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(Speech2TextOperationMonitorService.class);
 
     private static final Authorizations AUTHORIZATIONS_ALL = new Authorizations(GeAuthorizationRepository.ADMIN_ROLE);
-    private static final int DEFAULT_CHECK_INTERVAL = 10; //seconds
+    private static final int DEFAULT_CHECK_INTERVAL = 20; //seconds
     static final String CONFIG_GOOGLE_S2T_BUCKET_NAME = "google.s2t.bucket.name";
 
     private WorkQueueRepository workQueueRepository;
@@ -118,7 +120,7 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
         try (QueryResultsIterable<Vertex> pendingVertices = graph.query(AUTHORIZATIONS_ALL)
                 .has(OPERATION_NAME.getPropertyName())
                 .vertices()) {
-            LOGGER.info("Found %s Google responses still pending", pendingVertices.getTotalHits());
+            LOGGER.debug("Found %s Google responses still pending", pendingVertices.getTotalHits());
 
             if (pendingVertices.getTotalHits() > 0) {
                 try (SpeechClient speechClient = SpeechClient.create()) {
@@ -134,20 +136,25 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
                                 LOGGER.debug("Polling operation %s", operationName);
                                 try {
                                     Operation operation = client.getOperation(operationName);
+                                    LongRunningRecognizeMetadata longRunningRecognizeMetadata =
+                                            LongRunningRecognizeMetadata.parseFrom(operation.getMetadata().getValue());
+
                                     if (operation.getDone()) {
                                         LOGGER.debug("Google operation %s finished", operationName);
 
                                         try {
-                                            String resultedText = "";
+                                            StringBuilder resultedText = new StringBuilder();
                                             LongRunningRecognizeResponse opResponse = LongRunningRecognizeResponse.parseFrom(
                                                     operation.getResponse().getValue()
                                             );
                                             if (opResponse.getResultsCount() > 0) {
-                                                // get first resutlt
-                                                if (opResponse.getResults(0).getAlternativesCount() > 0) {
-                                                    resultedText = opResponse.getResults(0).getAlternatives(0).getTranscript();
+                                                for (int i = 0; i< opResponse.getResultsCount(); i++) {
+                                                    resultedText.append(" ")
+                                                            .append(opResponse.getResults(i).getAlternatives(0).getTranscript());
                                                 }
                                             }
+
+                                            System.out.println(resultedText);
 
                                             PropertyMetadata propertyMetadata = new PropertyMetadata(
                                                     new SystemUser(), new VisibilityJson(), Visibility.EMPTY
@@ -156,7 +163,7 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
                                             BcSchema.TEXT.addPropertyValue(
                                                     vertex,
                                                     language.stringValue(),
-                                                    DefaultStreamingPropertyValue.create(resultedText),
+                                                    DefaultStreamingPropertyValue.create(resultedText.toString()),
                                                     propertyMetadata.createMetadata(), Visibility.EMPTY, vertex.getAuthorizations()
                                             );
 
@@ -197,8 +204,12 @@ public class Speech2TextOperationMonitorService extends PeriodicBackgroundServic
                                         } catch (InvalidProtocolBufferException e) {
                                             LOGGER.error("Received invalid response from Google", e);
                                         }
+                                    } else {
+
+                                        long spent = Instant.now().getEpochSecond() - longRunningRecognizeMetadata.getStartTime().getSeconds();
+                                        LOGGER.info("Waiting for Speech2Text op %s for %d seconds, progress: %d", operation.getName(), spent, longRunningRecognizeMetadata.getProgressPercent());
                                     }
-                                } catch (ApiException ex) {
+                                } catch (ApiException | InvalidProtocolBufferException ex) {
                                     LOGGER.error("There was an error while polling Google responses with message: %s", ex.getMessage());
                                 }
                             }

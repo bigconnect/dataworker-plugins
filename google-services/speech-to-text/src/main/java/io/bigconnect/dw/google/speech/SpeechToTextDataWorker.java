@@ -66,6 +66,7 @@ import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
 import io.bigconnect.dw.google.common.schema.GoogleSchemaContribution;
 import net.bramp.ffmpeg.FFmpegExecutor;
 import net.bramp.ffmpeg.builder.FFmpegBuilder;
+import net.bramp.ffmpeg.builder.FFmpegOutputBuilder;
 import net.bramp.ffmpeg.job.FFmpegJob;
 import net.bramp.ffmpeg.probe.FFmpegProbeResult;
 import org.apache.commons.io.FileUtils;
@@ -148,12 +149,16 @@ public class SpeechToTextDataWorker extends DataWorker {
         getGraph().flush();
 
         // Convert to FLAC audio
+        long start = System.currentTimeMillis();
         Path audioPath = createFlac(vertex, tempFolder);
-        // Upload to GCS
-        final String gcsId = UUID.randomUUID().toString();
-        uploadObjectToGCS(gcsId, audioPath.toAbsolutePath().toString());
+        LOGGER.info("Time took to encode FLAC: %d", (System.currentTimeMillis() - start) / 1000);
         // Probe Audio info
         final AudioInfo audioInfo = new AudioInfo(audioPath.toAbsolutePath().toString());
+        // Upload to GCS
+        final String gcsId = UUID.randomUUID().toString();
+        start = System.currentTimeMillis();
+        uploadObjectToGCS(gcsId, audioPath.toAbsolutePath().toString());
+        LOGGER.info("Time took to upload FLAC: %d", (System.currentTimeMillis() - start) / 1000);
         // Cleanup
         FileUtils.deleteQuietly(tempFolder.toFile());
 
@@ -192,8 +197,16 @@ public class SpeechToTextDataWorker extends DataWorker {
         IOUtils.copyLarge(spv.getInputStream(), new FileOutputStream(videoFile.toFile()));
 
         FFmpegBuilder builder = new FFmpegBuilder();
+        builder.addExtraArgs("-vn");
+        builder.addExtraArgs("-sn");
+
         builder.addInput(videoFile.toAbsolutePath().toString());
-        builder.addOutput(finalFile.toAbsolutePath().toString());
+        builder.addOutput(new FFmpegOutputBuilder()
+                .setFilename(finalFile.toAbsolutePath().toString())
+                .setAudioCodec("flac")
+                .setAudioChannels(1)
+                .addExtraArgs("-compression_level", "0")
+        );
 
         FFmpegExecutor executor = new FFmpegExecutor(AVUtils.ffmpeg());
         FFmpegJob job = executor.createJob(builder);
