@@ -15,6 +15,7 @@ import com.mware.ge.Visibility;
 import com.mware.ge.values.storable.ByteArray;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.Values;
+import io.bigconnect.dw.text.common.Sentiment;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -31,8 +32,7 @@ import static io.bigconnect.dw.sentiment.intellidockers.IntelliDockersSentimentE
 
 public class IntelliDockersSentimentExtractorWorkerTest extends InMemoryGraphTestBase {
     Authorizations AUTHS = new Authorizations();
-    GenericContainer container;
-    String TEXT = "Directorul Termoenergetica, Claudiu Crețu, spune că ar plăti toate datoriile dacă ar avea bani: ”Când plătește Primăria subvenția, plătim și noi”.\n" +
+    String TEXT_RO = "Directorul Termoenergetica, Claudiu Crețu, spune că ar plăti toate datoriile dacă ar avea bani: ”Când plătește Primăria subvenția, plătim și noi”.\n" +
             "\n" +
             "Primăria Capitalei are o datorie de peste 200 de milioane lei la Termoenergetica, reprezentând plata subvenției asumate pentru populație pentru ultimele luni, mai-septembrie.\n" +
             "\n" +
@@ -43,28 +43,11 @@ public class IntelliDockersSentimentExtractorWorkerTest extends InMemoryGraphTes
             "Într-un interviu acordat HotNews.ro la finalul lunii septembrie, Nicușor Dan declara că în 2021 au fost modernizați 15 km de rețea primară.";
 
 
-    @Before
-    public void before() throws Exception {
-        super.before();
-
-        container = new GenericContainer(DockerImageName.parse("intellidockers/sentiment-ron:latest"))
-                .withExposedPorts(8989)
-                .withEnv("LICENSE", "//fill me in");
-        container.start();
-
-        // give enough time for containers to properly start
-        Thread.sleep(5000L);
-    }
-
-    @After
-    public void after() throws Exception {
-        super.after();
-        container.stop();
-    }
-
     @Test
     public void testSentimentParagraphs() throws Exception {
-        getConfiguration().set(CONFIG_INTELLIDOCKERS_URL, String.format("http://%s:%d", container.getHost(), container.getFirstMappedPort()));
+        getConfiguration().set(CONFIG_INTELLIDOCKERS_URL+".ro", "http://localhost:28001");
+        getConfiguration().set(CONFIG_INTELLIDOCKERS_URL+".en", "http://localhost:28002");
+        getConfiguration().set(CONFIG_INTELLIDOCKERS_URL+".ar", "http://localhost:28003");
         getConfiguration().set(CONFIG_INTELLIDOCKERS_PARAGRAPHS, "true");
 
         IntelliDockersSentimentExtractorWorker dw = new IntelliDockersSentimentExtractorWorker(getTermMentionRepository());
@@ -78,15 +61,18 @@ public class IntelliDockersSentimentExtractorWorkerTest extends InMemoryGraphTes
 
         Vertex v = getGraph().prepareVertex(Visibility.EMPTY, SchemaConstants.CONCEPT_TYPE_DOCUMENT)
                 .setProperty(RawObjectSchema.RAW_LANGUAGE.getPropertyName(), Values.stringValue("ro"), Visibility.EMPTY)
-                .setProperty(BcSchema.TEXT.getPropertyName(), new DefaultStreamingPropertyValue(new ByteArrayInputStream(TEXT.getBytes(StandardCharsets.UTF_8)), ByteArray.class), Visibility.EMPTY)
+                .setProperty(BcSchema.TEXT.getPropertyName(), new DefaultStreamingPropertyValue(new ByteArrayInputStream(TEXT_RO.getBytes(StandardCharsets.UTF_8)), ByteArray.class), Visibility.EMPTY)
                 .save(AUTHS);
 
         DataWorkerData data = new DataWorkerData(new DirectVisibilityTranslator(), v, RawObjectSchema.RAW_LANGUAGE.getFirstProperty(v),
                 null, null, Priority.NORMAL, true);
-        dw.execute(new ByteArrayInputStream(TEXT.getBytes(StandardCharsets.UTF_8)), data);
+        if (dw.isHandled(v, RawObjectSchema.RAW_LANGUAGE.getFirstProperty(v))) {
+            dw.execute(new ByteArrayInputStream(TEXT_RO.getBytes(StandardCharsets.UTF_8)), data);
+        }
+
         v = getGraph().getVertex(v.getId(), AUTHS);
 
-        Assert.assertEquals("negative", RawObjectSchema.RAW_SENTIMENT.getPropertyValue(v));
+        Assert.assertEquals(Sentiment.NEGATIVE, RawObjectSchema.RAW_SENTIMENT.getPropertyValue(v));
 
         Authorizations tmAuths = getGraph().createAuthorizations(TermMentionRepository.VISIBILITY_STRING);
 

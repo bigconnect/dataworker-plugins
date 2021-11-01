@@ -1,5 +1,6 @@
 package io.bigconnect.dw.text.language;
 
+import com.github.pemistahl.lingua.api.IsoCode639_1;
 import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
 import com.mware.core.model.Description;
 import com.mware.core.model.Name;
@@ -19,7 +20,7 @@ public class BuiltInLanguageDetectorWorker extends LanguageDetectorWorkerBase {
     }
 
     @Override
-    public Optional<String> detectLanguage(String text) {
+    public Optional<IsoCode639_1> detectLanguage(String text) {
         return languageDetector.detectLanguage(text);
     }
 }

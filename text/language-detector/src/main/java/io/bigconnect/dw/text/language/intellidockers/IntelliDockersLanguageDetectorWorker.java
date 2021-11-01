@@ -1,5 +1,6 @@
 package io.bigconnect.dw.text.language.intellidockers;
 
+import com.github.pemistahl.lingua.api.IsoCode639_1;
 import com.github.pemistahl.lingua.api.IsoCode639_3;
 import com.github.pemistahl.lingua.api.Language;
 import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
@@ -37,7 +38,7 @@ public class IntelliDockersLanguageDetectorWorker extends LanguageDetectorWorker
     }
 
     @Override
-    public Optional<String> detectLanguage(String text) {
+    public Optional<IsoCode639_1> detectLanguage(String text) {
         try {
             Response<IdLanguageResponse> response = languageDetector.process(new IdLanguageRequest(text))
                     .execute();
@@ -45,7 +46,7 @@ public class IntelliDockersLanguageDetectorWorker extends LanguageDetectorWorker
                 String threeLetterLanguage = response.body().language;
                 return Optional.of(
                         Language.getByIsoCode639_3(IsoCode639_3.valueOf(threeLetterLanguage.toUpperCase()))
-                                .getIsoCode639_1().toString()
+                                .getIsoCode639_1()
                 );
             }
         } catch (IOException e) {

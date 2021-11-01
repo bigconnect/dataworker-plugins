@@ -53,6 +53,9 @@ import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -61,12 +64,14 @@ import static io.bigconnect.dw.ner.intellidockers.IntelliDockersSchemaContributi
 public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
     public final static BcLogger LOGGER = BcLoggerFactory.getLogger(IntelliDockersNamedEntityExtractor.class);
     public static final String CONFIG_INTELLIDOCKERS_URL = "intellidockers.ron.ner.url";
+    public static final String CONFIG_INTELLIDOCKERS_LANGUAGES = "intellidockers.ner.languages";
 
     private Configuration configuration;
     private WikipediaDemonymMap demonyms;
     private IntelliDockersNer service;
     private GeMetricRegistry metricRegistry;
     private Timer detectTimer;
+    private List<String> languages = new ArrayList<>();
 
     @Override
     public void initialize(Configuration config, GeMetricRegistry metricRegistry) throws ClassCastException {
@@ -74,6 +79,8 @@ public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
         this.metricRegistry = metricRegistry;
         demonyms = new WikipediaDemonymMap();
         String url = config.get(CONFIG_INTELLIDOCKERS_URL, null);
+        String langs = config.get(CONFIG_INTELLIDOCKERS_LANGUAGES, "ro");
+        languages.addAll(Arrays.asList(langs.split(",")));
         Preconditions.checkState(!StringUtils.isEmpty(url), "Please provide the '" + CONFIG_INTELLIDOCKERS_URL + "' config parameter");
 
         OkHttpClient client = new OkHttpClient().newBuilder()
@@ -100,13 +107,14 @@ public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
             return entities;
         }
 
-        if (!StringUtils.equalsAnyIgnoreCase(language, "ro")) {
+        if (!languages.contains(language)) {
             LOGGER.debug("Language %s not supported by %s", language, getClass().getSimpleName());
             return entities;
         }
 
         String text = textToParse;
-        if (manuallyReplaceDemonyms) {    // this is a noticeable performance hit
+        if (manuallyReplaceDemonyms) {
+            // this is a noticeable performance hit
             LOGGER.debug("Replacing all demonyms by hand");
             text = demonyms.replaceAll(textToParse);
         }

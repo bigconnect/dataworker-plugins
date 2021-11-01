@@ -36,7 +36,6 @@
  */
 package io.bigconnect.dw.sentiment.intellidockers;
 
-import com.mware.core.exception.BcException;
 import com.mware.core.ingest.dataworker.DataWorker;
 import com.mware.core.ingest.dataworker.DataWorkerData;
 import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
@@ -62,11 +61,10 @@ import com.mware.ge.values.storable.StreamingPropertyValue;
 import com.mware.ge.values.storable.Values;
 import com.mware.ontology.IgnoredMimeTypes;
 import io.bigconnect.dw.text.common.NerUtils;
+import io.bigconnect.dw.text.common.Sentiment;
 import io.bigconnect.dw.text.common.TextSpan;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import retrofit2.Call;
-import retrofit2.Callback;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
@@ -75,19 +73,27 @@ import javax.inject.Inject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Name("IntelliDockers Sentiment Analysis")
 @Description("Extracts sentiment from text using IntelliDockers")
 public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(IntelliDockersSentimentExtractorWorker.class);
-    public static final String CONFIG_INTELLIDOCKERS_URL = "intellidockers.ron.sentiment.url";
-    public static final String CONFIG_INTELLIDOCKERS_PARAGRAPHS = "intellidockers.ron.sentiment.paragraphs";
+    public static final String CONFIG_INTELLIDOCKERS_URL = "intellidockers.sentiment.url";
+    public static final String CONFIG_INTELLIDOCKERS_PARAGRAPHS = "intellidockers.sentiment.paragraphs";
 
-    private IntelliDockersSentiment service;
+    private Map<String, IntelliDockersSentiment> services = new HashMap<>();
     private boolean doParagraphs;
     private TermMentionRepository termMentionRepository;
     private Timer detectTimer;
+
+    private static final Map<String, String> SUPPORTED_LANGUAGES = new HashMap<String, String>() {{
+        put("ro", "ron");
+        put("en", "eng");
+        put("ar", "ara");
+    }};
 
     @Inject
     public IntelliDockersSentimentExtractorWorker(
@@ -100,14 +106,16 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
         super.prepare(workerPrepareData);
 
-        String url = getConfiguration().get(CONFIG_INTELLIDOCKERS_URL, null);
-        Preconditions.checkState(!StringUtils.isEmpty(url), "Please provide the '" + CONFIG_INTELLIDOCKERS_URL + "' config parameter");
-        Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl(url)
-                .addConverterFactory(JacksonConverterFactory.create())
-                .build();
+        Map<String, Map<String, String>> config = getConfiguration().getMultiValue("intellidockers.sentiment.url");
+        Preconditions.checkState(config != null && config.size() > 0, "Please provide the '" + CONFIG_INTELLIDOCKERS_URL+".*" + "' config parameters");
 
-        service = retrofit.create(IntelliDockersSentiment.class);
+        config.forEach((k,v) -> {
+            Retrofit retrofit = new Retrofit.Builder()
+                    .baseUrl(v.get(""))
+                    .addConverterFactory(JacksonConverterFactory.create())
+                    .build();
+            services.put(k, retrofit.create(IntelliDockersSentiment.class));
+        });
 
         this.doParagraphs = getConfiguration().getBoolean(CONFIG_INTELLIDOCKERS_PARAGRAPHS, true);
         this.detectTimer = getGraph().getMetricsRegistry().getTimer(getClass(), "sentiment-time");
@@ -126,7 +134,9 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
             // do entity extraction only if language is set
             String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
             LOGGER.debug("Got language for: "+element.getId()+" - "+language);
-            return !StringUtils.isEmpty(language) && "ro".equals(language);
+            return !StringUtils.isEmpty(language)
+                    && SUPPORTED_LANGUAGES.containsKey(language)
+                    && services.containsKey(language);
         }
 
         return false;
@@ -165,9 +175,9 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         }
 
         try {
-            LOGGER.info("Extract sentiment for: "+element.getId());
+            LOGGER.info("Extract sentiment for: "+element.getId(), ", language: "+language);
             PausableTimerContext t = new PausableTimerContext(detectTimer);
-            Response<SentimentResponse> response = service.process(new SentimentRequest(text, "ron"))
+            Response<SentimentResponse> response = services.get(language).process(new SentimentRequest(text, SUPPORTED_LANGUAGES.get(language)))
                     .execute();
             t.stop();
 
@@ -191,7 +201,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
                 VisibilityJson tmVisibilityJson = new VisibilityJson();
                 tmVisibilityJson.setSource("");
                 for (TextSpan p : paragraphs) {
-                    response = service.process(new SentimentRequest(p.getText(), "ron"))
+                    response = services.get(language).process(new SentimentRequest(p.getText(), SUPPORTED_LANGUAGES.get(language)))
                             .execute();
                     SentimentResponse result = response.body();
                     if (result != null) {
@@ -239,11 +249,11 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     private String toBcSentiment(SentimentResponse sentiment) {
         switch (sentiment.label) {
             case "neg":
-                return "negative";
+                return Sentiment.NEGATIVE;
             case "pos":
-                return "positive";
+                return Sentiment.POSITIVE;
             case "neu":
-                return "neutral";
+                return Sentiment.NEUTRAL;
             default:
                 throw new IllegalArgumentException("Unknown value: "+sentiment.label);
         }

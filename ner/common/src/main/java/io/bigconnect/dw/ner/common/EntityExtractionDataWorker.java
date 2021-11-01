@@ -41,6 +41,8 @@ import com.google.inject.Inject;
 import com.mware.core.ingest.dataworker.DataWorker;
 import com.mware.core.ingest.dataworker.DataWorkerData;
 import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
+import com.mware.core.model.Description;
+import com.mware.core.model.Name;
 import com.mware.core.model.clientapi.dto.VisibilityJson;
 import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
@@ -72,6 +74,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+@Name("Entity Extractor")
+@Description("Extracts Named Entities from text")
 public class EntityExtractionDataWorker extends DataWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(EntityExtractionDataWorker.class);
 

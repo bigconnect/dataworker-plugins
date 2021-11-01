@@ -16,11 +16,9 @@ public class LanguageDetectorUtil {
                 .build();
     }
 
-    public synchronized Optional<String> detectLanguage(String text) {
+    public synchronized Optional<IsoCode639_1> detectLanguage(String text) {
         Language language = languageDetector.detectLanguageOf(text);
         return Optional.of(language)
-                .map(Language::getIsoCode639_1)
-                .map(IsoCode639_1::name)
-                .map(String::toLowerCase);
+                .map(Language::getIsoCode639_1);
     }
 }

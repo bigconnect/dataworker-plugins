@@ -36,6 +36,7 @@
  */
 package io.bigconnect.dw.text.language;
 
+import com.github.pemistahl.lingua.api.IsoCode639_1;
 import com.mware.core.ingest.dataworker.DataWorker;
 import com.mware.core.ingest.dataworker.DataWorkerData;
 import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
@@ -89,18 +90,19 @@ public abstract class LanguageDetectorWorkerBase extends DataWorker {
             }
 
             PausableTimerContext t = new PausableTimerContext(detectTimer);
-            Optional<String> language = detectLanguage(text);
+            Optional<IsoCode639_1> language = detectLanguage(text);
             t.stop();
 
             if (language.isPresent()) {
+                String lang = language.get().name().toLowerCase();
                 // set the new language
                 ExistingElementMutation<Vertex> m = refresh(data.getElement()).prepareMutation();
                 m.setPropertyMetadata(data.getProperty(), BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
-                        Values.stringValue(language.get()), Visibility.EMPTY);
+                        Values.stringValue(lang), Visibility.EMPTY);
 
                 // the key for the RAW_LANGUAGE prop must be the same as the TEXT prop key for which the language is detected
                 // this combination is used later in the EntityExtractor and SentimentExtractor
-                m.addPropertyValue(data.getProperty().getKey(), RawObjectSchema.RAW_LANGUAGE.getPropertyName(), Values.stringValue(language.get()), Visibility.EMPTY);
+                m.addPropertyValue(data.getProperty().getKey(), RawObjectSchema.RAW_LANGUAGE.getPropertyName(), Values.stringValue(lang), Visibility.EMPTY);
 
                 Element e = m.save(getAuthorizations());
                 getGraph().flush();
@@ -122,14 +124,14 @@ public abstract class LanguageDetectorWorkerBase extends DataWorker {
             String title = BcSchema.TITLE.getFirstPropertyValue(data.getElement());
 
             PausableTimerContext t = new PausableTimerContext(detectTimer);
-            Optional<String> language = detectLanguage(title);
+            Optional<IsoCode639_1> language = detectLanguage(title);
             t.stop();
 
             if (language.isPresent()) {
                 // set the new language
                 ExistingElementMutation<Vertex> m = refresh(data.getElement()).prepareMutation();
                 m.setPropertyMetadata(data.getProperty(), BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
-                        Values.stringValue(language.get()), Visibility.EMPTY);
+                        Values.stringValue(language.get().name().toLowerCase()), Visibility.EMPTY);
                 Element e = m.save(getAuthorizations());
                 getGraph().flush();
 
@@ -153,5 +155,5 @@ public abstract class LanguageDetectorWorkerBase extends DataWorker {
      * @param text input text
      * @return the 2-letter language code
      */
-    public abstract Optional<String> detectLanguage(String text);
+    public abstract Optional<IsoCode639_1> detectLanguage(String text);
 }
