@@ -36,6 +36,7 @@
  */
 package io.bigconnect.dw.google.translate;
 
+import com.google.api.gax.rpc.ResourceExhaustedException;
 import com.google.cloud.translate.v3beta1.*;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -46,7 +47,9 @@ import com.mware.core.ingest.dataworker.ElementOrPropertyStatus;
 import com.mware.core.model.Description;
 import com.mware.core.model.Name;
 import com.mware.core.model.clientapi.dto.VisibilityJson;
+import com.mware.core.model.notification.SystemNotification;
 import com.mware.core.model.notification.SystemNotificationRepository;
+import com.mware.core.model.notification.SystemNotificationSeverity;
 import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
 import com.mware.core.model.properties.types.BcProperty;
@@ -66,12 +69,15 @@ import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
 import io.bigconnect.dw.text.common.LanguageDetectorUtil;
 import io.bigconnect.dw.text.common.TextPropertyHelper;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.time.DateUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -280,6 +286,21 @@ public class GoogleTranslateDataWorker extends DataWorker {
                     // success
                     return true;
                 } catch (Exception ex) {
+                    if (ex instanceof ResourceExhaustedException) {
+                        Date startDate = new Date();
+                        Date endDate = new Date();
+                        DateUtils.setHours(endDate, 23);
+                        DateUtils.setMinutes(endDate, 59);
+                        String ddMM = new SimpleDateFormat("dd/MM").format(startDate);
+                        SystemNotification notif = systemNotificationRepository.createNotification(
+                                SystemNotificationSeverity.WARNING,
+                                "Google Translate Daily Limit",
+                                ddMM + ": The daily limit for Google Translate has been reached.",
+                                null, startDate, endDate, null
+                        );
+                        getWebQueueRepository().pushSystemNotification(notif);
+                    }
+
                     LOGGER.warn("Could not perform translation: " + ex.getMessage());
                     // failure
                     return false;
