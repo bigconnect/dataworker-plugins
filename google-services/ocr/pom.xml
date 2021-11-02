@@ -21,7 +21,7 @@
         <dependency>
             <groupId>com.google.cloud</groupId>
             <artifactId>google-cloud-vision</artifactId>
-            <version>${cloud.vision.version}</version>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>io.bigconnect</groupId>

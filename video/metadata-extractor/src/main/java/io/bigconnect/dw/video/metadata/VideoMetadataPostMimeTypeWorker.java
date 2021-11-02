@@ -36,7 +36,6 @@
  */
 package io.bigconnect.dw.video.metadata;
 
-import com.google.inject.Inject;
 import com.mware.bigconnect.ffmpeg.AVMediaInfo;
 import com.mware.core.ingest.dataworker.DataWorkerData;
 import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
@@ -45,7 +44,6 @@ import com.mware.core.model.Description;
 import com.mware.core.model.Name;
 import com.mware.core.model.properties.MediaBcSchema;
 import com.mware.core.model.properties.types.*;
-import com.mware.core.model.schema.SchemaRepository;
 import com.mware.core.util.FileSizeUtil;
 import com.mware.ge.Authorizations;
 import com.mware.ge.Element;
@@ -63,7 +61,6 @@ import java.util.List;
 @Description("Extracts video metadata")
 public class VideoMetadataPostMimeTypeWorker extends PostMimeTypeWorker {
     public static final String MULTI_VALUE_PROPERTY_KEY = VideoMetadataPostMimeTypeWorker.class.getName();
-    private SchemaRepository schemaRepository;
     private DoubleBcProperty duration;
     private GeoPointBcProperty geoLocation;
     private DateBcProperty dateTaken;
@@ -75,13 +72,13 @@ public class VideoMetadataPostMimeTypeWorker extends PostMimeTypeWorker {
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
         super.prepare(workerPrepareData);
-        duration = new DoubleBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.duration"));
-        geoLocation = new GeoPointBcProperty(schemaRepository.getRequiredPropertyNameByIntent("geoLocation"));
-        dateTaken = new DateBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.dateTaken"));
-        width = new IntegerBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.width"));
-        height = new IntegerBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.height"));
-        mediaMetadata = new StringBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.metadata"));
-        fileSize = new IntegerBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.fileSize"));
+        duration = new DoubleBcProperty(getSchemaRepository().getRequiredPropertyNameByIntent("media.duration"));
+        geoLocation = new GeoPointBcProperty(getSchemaRepository().getRequiredPropertyNameByIntent("geoLocation"));
+        dateTaken = new DateBcProperty(getSchemaRepository().getRequiredPropertyNameByIntent("media.dateTaken"));
+        width = new IntegerBcProperty(getSchemaRepository().getRequiredPropertyNameByIntent("media.width"));
+        height = new IntegerBcProperty(getSchemaRepository().getRequiredPropertyNameByIntent("media.height"));
+        mediaMetadata = new StringBcProperty(getSchemaRepository().getRequiredPropertyNameByIntent("media.metadata"));
+        fileSize = new IntegerBcProperty(getSchemaRepository().getRequiredPropertyNameByIntent("media.fileSize"));
     }
 
     @Override
@@ -141,10 +138,5 @@ public class VideoMetadataPostMimeTypeWorker extends PostMimeTypeWorker {
                                  List<BcPropertyUpdate> changedProperties) {
         property.updateProperty(changedProperties, data.getElement(), mutation, MULTI_VALUE_PROPERTY_KEY, value,
                 metadata, data.getVisibility());
-    }
-
-    @Inject
-    public void setSchemaRepository(SchemaRepository ontologyRepository) {
-        this.schemaRepository = ontologyRepository;
     }
 }

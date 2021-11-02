@@ -12,18 +12,23 @@
     <artifactId>dw-google-services</artifactId>
     <name>BigConnect: Google Services</name>
 
-    <properties>
-        <cloud.storage.version>1.113.6</cloud.storage.version>
-        <cloud.speech.version>1.24.8</cloud.speech.version>
-        <cloud.translate.version>1.93.0</cloud.translate.version>
-        <cloud.vision.version>2.0.14</cloud.vision.version>
-    </properties>
-
     <modules>
         <module>common</module>
         <module>speech-to-text</module>
         <module>translate</module>
         <module>ocr</module>
+        <module>object-detection</module>
     </modules>
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.google.cloud</groupId>
+                <artifactId>libraries-bom</artifactId>
+                <version>24.0.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 </project>

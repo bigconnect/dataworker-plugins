@@ -9,8 +9,8 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>dw-google-services-s2t</artifactId>
-    <name>BigConnect: DataWorker: Google: Speech2Text</name>
+    <artifactId>dw-google-services-object-detection</artifactId>
+    <name>BigConnect: DataWorker: Google: Object Detection</name>
 
     <dependencies>
         <dependency>
@@ -20,15 +20,17 @@
         </dependency>
         <dependency>
             <groupId>com.google.cloud</groupId>
-            <artifactId>google-cloud-speech</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.google.cloud</groupId>
-            <artifactId>google-cloud-storage</artifactId>
+            <artifactId>google-cloud-vision</artifactId>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>io.bigconnect</groupId>
             <artifactId>av-utils</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.bigconnect</groupId>
+            <artifactId>dw-text-common</artifactId>
             <version>${project.version}</version>
         </dependency>
 

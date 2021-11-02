@@ -66,15 +66,14 @@ import java.util.List;
 public class AudioMetadataPostMimeTypeWorker extends PostMimeTypeWorker {
     public static final String MULTI_VALUE_PROPERTY_KEY = AudioMetadataPostMimeTypeWorker.class.getName();
     private ProcessRunner processRunner;
-    private SchemaRepository schemaRepository;
     private DoubleBcProperty duration;
     private IntegerBcProperty fileSize;
 
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
         super.prepare(workerPrepareData);
-        duration = new DoubleBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.duration"));
-        fileSize = new IntegerBcProperty(schemaRepository.getRequiredPropertyNameByIntent("media.fileSize"));
+        duration = new DoubleBcProperty(getSchemaRepository().getRequiredPropertyNameByIntent("media.duration"));
+        fileSize = new IntegerBcProperty(getSchemaRepository().getRequiredPropertyNameByIntent("media.fileSize"));
     }
 
     @Override
@@ -117,10 +116,5 @@ public class AudioMetadataPostMimeTypeWorker extends PostMimeTypeWorker {
     @Inject
     public void setProcessRunner(ProcessRunner processRunner) {
         this.processRunner = processRunner;
-    }
-
-    @Inject
-    public void setSchemaRepository(SchemaRepository ontologyRepository) {
-        this.schemaRepository = ontologyRepository;
     }
 }
