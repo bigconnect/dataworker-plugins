@@ -136,6 +136,11 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     public void execute(InputStream in, DataWorkerData data) throws Exception {
         String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(data.getProperty());
         Property textProperty = BcSchema.TEXT.getProperty(refresh(data.getElement()), data.getProperty().getKey());
+        if (textProperty == null) {
+            LOGGER.warn("Could not find text property for language: "+language);
+            return;
+        }
+
         StreamingPropertyValue spv = BcSchema.TEXT.getPropertyValue(textProperty);
 
         if (spv == null) {

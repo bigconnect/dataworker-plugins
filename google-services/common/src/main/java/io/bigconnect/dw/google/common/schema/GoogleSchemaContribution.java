@@ -46,18 +46,18 @@ import com.mware.ge.TextIndexHint;
 import java.util.EnumSet;
 
 public class GoogleSchemaContribution implements SchemaContribution {
-    public static final StringSingleValueBcProperty OPERATION_NAME = new StringSingleValueBcProperty("g_async_op");
+    public static final StringSingleValueBcProperty OPERATION_NAME1 = new StringSingleValueBcProperty("g_async_op");
 
     @Override
     public boolean patchApplied(SchemaFactory schemaFactory) {
-        return schemaFactory.getProperty(OPERATION_NAME.getPropertyName()) != null;
+        return schemaFactory.getProperty(OPERATION_NAME1.getPropertyName()) != null;
     }
 
     @Override
     public void patchSchema(SchemaFactory schemaFactory) {
         schemaFactory.newConceptProperty()
                 .concepts(schemaFactory.getConcept(SchemaConstants.CONCEPT_TYPE_THING))
-                .name(OPERATION_NAME.getPropertyName())
+                .name(OPERATION_NAME1.getPropertyName())
                 .type(PropertyType.STRING)
                 .textIndexHints(EnumSet.of(TextIndexHint.EXACT_MATCH))
                 .save();

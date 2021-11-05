@@ -28,17 +28,17 @@ public class IntelliDockersLanguageDetectorWorker extends LanguageDetectorWorker
 
         String url = getConfiguration().get(CONFIG_INTELLIDOCKERS_URL, null);
         Preconditions.checkState(!StringUtils.isEmpty(url), "Please provide the '" + CONFIG_INTELLIDOCKERS_URL + "' config parameter");
-        Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl(url)
-                .addConverterFactory(JacksonConverterFactory.create())
-                .build();
 
-        languageDetector = retrofit.create(IntelliDockersLanguage.class);
+        languageDetector = createLanguageDetector();
     }
 
     @Override
     public Optional<String> detectLanguage(String text) {
         try {
+            if (languageDetector == null) {
+                languageDetector = createLanguageDetector();
+            }
+
             Response<IdLanguageResponse> response = languageDetector.process(new IdLanguageRequest(text))
                     .execute();
             if (response.isSuccessful() && response.body() != null) {
@@ -53,5 +53,13 @@ public class IntelliDockersLanguageDetectorWorker extends LanguageDetectorWorker
         }
 
         return Optional.empty();
+    }
+
+    private IntelliDockersLanguage createLanguageDetector() {
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(getConfiguration().get(CONFIG_INTELLIDOCKERS_URL, null))
+                .addConverterFactory(JacksonConverterFactory.create())
+                .build();
+        return retrofit.create(IntelliDockersLanguage.class);
     }
 }

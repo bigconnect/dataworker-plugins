@@ -10,27 +10,17 @@ import com.mware.ge.TextIndexHint;
 import java.util.EnumSet;
 
 public class Speech2TextSchemaContribution implements SchemaContribution {
-    public static final BooleanSingleValueBcProperty GOOGLE_S2T_PROPERTY = new BooleanSingleValueBcProperty("GS2T");
     public static final BooleanSingleValueBcProperty GOOGLE_S2T_DONE_PROPERTY = new BooleanSingleValueBcProperty("GS2TDone");
     public static final BooleanSingleValueBcProperty GOOGLE_S2T_PROGRESS_PROPERTY = new BooleanSingleValueBcProperty("GS2TProgress");
 
     @Override
     public boolean patchApplied(SchemaFactory schemaFactory) {
-        return schemaFactory.getProperty(GOOGLE_S2T_PROPERTY.getPropertyName()) != null
-                && schemaFactory.getProperty(GOOGLE_S2T_DONE_PROPERTY.getPropertyName()) != null
+        return schemaFactory.getProperty(GOOGLE_S2T_DONE_PROPERTY.getPropertyName()) != null
                 && schemaFactory.getProperty(GOOGLE_S2T_PROGRESS_PROPERTY.getPropertyName()) != null;
     }
 
     @Override
     public void patchSchema(SchemaFactory schemaFactory) {
-        schemaFactory.newConceptProperty()
-                .concepts(schemaFactory.getConcept(SchemaConstants.CONCEPT_TYPE_THING))
-                .name(GOOGLE_S2T_PROPERTY.getPropertyName())
-                .type(PropertyType.BOOLEAN)
-                .textIndexHints(EnumSet.of(TextIndexHint.EXACT_MATCH))
-                .userVisible(false)
-                .save();
-
         schemaFactory.newConceptProperty()
                 .concepts(schemaFactory.getConcept(SchemaConstants.CONCEPT_TYPE_THING))
                 .name(GOOGLE_S2T_PROGRESS_PROPERTY.getPropertyName())
