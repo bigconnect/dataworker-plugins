@@ -67,8 +67,7 @@ import static io.bigconnect.dw.google.speech.Speech2TextSchemaContribution.GOOGL
 @Description("Performs Speech2Text on Audio/Video files using Google Cloud Services")
 public class Speech2TextLongRunningProcessWorker extends LongRunningProcessWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(Speech2TextLongRunningProcessWorker.class);
-    private static final Authorizations AUTHORIZATIONS_ALL = new Authorizations(GeAuthorizationRepository.ADMIN_ROLE);
-    private static final int DEFAULT_CHECK_INTERVAL = 5; //seconds
+    private static final int CHECK_INTERVAL = 10; //seconds
     static final String CONFIG_GOOGLE_S2T_BUCKET_NAME = "google.s2t.bucket.name";
 
     private final LongRunningProcessRepository longRunningProcessRepository;
@@ -184,8 +183,15 @@ public class Speech2TextLongRunningProcessWorker extends LongRunningProcessWorke
                 LOGGER.info("Submitted Google response operation with id %s", response.getName());
             }
 
+            int secondCounter = 0;
             while (!checkResult(vertex, language, itemJson, opName)) {
-                Thread.sleep(10000);
+                Thread.sleep(CHECK_INTERVAL * 1000);
+                secondCounter += CHECK_INTERVAL;
+                if (secondCounter > 60_000) {
+                    // just to be safe, cancel the thread after 1h
+                    longRunningProcessRepository.reportProgress(itemJson, 1.0, "Dangling task cancelled");
+                    break;
+                }
             }
         } catch (Exception ex) {
             LOGGER.error("Could not cut video clip!", ex);
