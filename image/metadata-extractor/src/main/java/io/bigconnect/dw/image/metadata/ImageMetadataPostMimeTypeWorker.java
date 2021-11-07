@@ -40,20 +40,19 @@ import com.drew.imaging.FileType;
 import com.drew.imaging.FileTypeDetector;
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.metadata.Metadata;
-import com.mware.core.ingest.dataworker.DataWorker;
+import com.google.inject.Inject;
 import com.mware.core.ingest.dataworker.DataWorkerData;
 import com.mware.core.ingest.dataworker.DataWorkerPrepareData;
 import com.mware.core.ingest.dataworker.ElementOrPropertyStatus;
+import com.mware.core.ingest.dataworker.PostMimeTypeWorker;
 import com.mware.core.model.Description;
 import com.mware.core.model.Name;
-import com.mware.core.model.properties.BcSchema;
-import com.mware.core.model.properties.MediaBcSchema;
 import com.mware.core.model.schema.SchemaRepository;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
 import com.mware.core.util.FileSizeUtil;
+import com.mware.ge.Authorizations;
 import com.mware.ge.Element;
-import com.mware.ge.Property;
 import com.mware.ge.Vertex;
 import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.values.storable.Value;
@@ -63,15 +62,16 @@ import io.bigconnect.dw.image.metadata.utils.*;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
 @Name("Drewnoakes Image Metadata")
 @Description("Extracts image metadata using Drewnoakes open source tool")
-public class ImageMetadataWorker extends DataWorker {
-    private static final BcLogger LOGGER = BcLoggerFactory.getLogger(ImageMetadataWorker.class);
-    public static final String MULTI_VALUE_KEY = ImageMetadataWorker.class.getName();
+public class ImageMetadataPostMimeTypeWorker extends PostMimeTypeWorker {
+    private static final BcLogger LOGGER = BcLoggerFactory.getLogger(ImageMetadataPostMimeTypeWorker.class);
+    public static final String MULTI_VALUE_KEY = ImageMetadataPostMimeTypeWorker.class.getName();
+
+    private SchemaRepository schemaRepository;
     private String fileSizeIri;
     private String dateTakenIri;
     private String deviceMakeIri;
@@ -81,24 +81,19 @@ public class ImageMetadataWorker extends DataWorker {
     private String metadataIri;
     private String widthIri;
     private String heightIri;
-
-    @Override
-    public boolean isLocalFileRequired() {
-        return true;
-    }
-
+    
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
         super.prepare(workerPrepareData);
-        headingIri = getSchemaRepository().getRequiredPropertyNameByIntent("media.imageHeading", SchemaRepository.PUBLIC);
-        geoLocationIri = getSchemaRepository().getRequiredPropertyNameByIntent("geoLocation", SchemaRepository.PUBLIC);
-        dateTakenIri = getSchemaRepository().getRequiredPropertyNameByIntent("media.dateTaken", SchemaRepository.PUBLIC);
-        deviceMakeIri = getSchemaRepository().getRequiredPropertyNameByIntent("media.deviceMake", SchemaRepository.PUBLIC);
-        deviceModelIri = getSchemaRepository().getRequiredPropertyNameByIntent("media.deviceModel", SchemaRepository.PUBLIC);
-        widthIri = getSchemaRepository().getRequiredPropertyNameByIntent("media.width", SchemaRepository.PUBLIC);
-        heightIri = getSchemaRepository().getRequiredPropertyNameByIntent("media.height", SchemaRepository.PUBLIC);
-        metadataIri = getSchemaRepository().getRequiredPropertyNameByIntent("media.metadata", SchemaRepository.PUBLIC);
-        fileSizeIri = getSchemaRepository().getRequiredPropertyNameByIntent("media.fileSize", SchemaRepository.PUBLIC);
+        headingIri = schemaRepository.getRequiredPropertyNameByIntent("media.imageHeading", SchemaRepository.PUBLIC);
+        geoLocationIri = schemaRepository.getRequiredPropertyNameByIntent("geoLocation", SchemaRepository.PUBLIC);
+        dateTakenIri = schemaRepository.getRequiredPropertyNameByIntent("media.dateTaken", SchemaRepository.PUBLIC);
+        deviceMakeIri = schemaRepository.getRequiredPropertyNameByIntent("media.deviceMake", SchemaRepository.PUBLIC);
+        deviceModelIri = schemaRepository.getRequiredPropertyNameByIntent("media.deviceModel", SchemaRepository.PUBLIC);
+        widthIri = schemaRepository.getRequiredPropertyNameByIntent("media.width", SchemaRepository.PUBLIC);
+        heightIri = schemaRepository.getRequiredPropertyNameByIntent("media.height", SchemaRepository.PUBLIC);
+        metadataIri = schemaRepository.getRequiredPropertyNameByIntent("media.metadata", SchemaRepository.PUBLIC);
+        fileSizeIri = schemaRepository.getRequiredPropertyNameByIntent("media.fileSize", SchemaRepository.PUBLIC);
     }
 
     private void setProperty(String iri, Value value, ExistingElementMutation<Vertex> mutation, com.mware.ge.Metadata metadata, DataWorkerData data, List<String> properties) {
@@ -109,8 +104,12 @@ public class ImageMetadataWorker extends DataWorker {
     }
 
     @Override
-    public void execute(InputStream in, DataWorkerData data) throws Exception {
-        File imageFile = data.getLocalFile();
+    public void execute(String mimeType, DataWorkerData data, Authorizations authorizations) throws Exception {
+        if (!mimeType.startsWith("image")) {
+            return;
+        }
+        
+        File imageFile = getLocalFileForRaw(data.getElement());
         if (imageFile == null) {
             return;
         }
@@ -122,7 +121,7 @@ public class ImageMetadataWorker extends DataWorker {
         }
 
         com.mware.ge.Metadata metadata = data.createPropertyMetadata(getUser());
-        ExistingElementMutation<Vertex> mutation = refresh(data.getElement()).prepareMutation();
+        ExistingElementMutation<Vertex> mutation = data.getElement().prepareMutation();
         List<String> properties = new ArrayList<>();
 
         Metadata imageMetadata = null;
@@ -157,7 +156,7 @@ public class ImageMetadataWorker extends DataWorker {
 
         setProperty(fileSizeIri, Values.of(FileSizeUtil.getSize(imageFile)), mutation, metadata, data, properties);
 
-        Element e = mutation.save(getAuthorizations());
+        Element e = mutation.save(authorizations);
         getGraph().flush();
 
         for (String propertyName : properties) {
@@ -177,21 +176,8 @@ public class ImageMetadataWorker extends DataWorker {
         }
     }
 
-    @Override
-    public boolean isHandled(Element element, Property property) {
-        if (property == null) {
-            return false;
-        }
-
-        if (property.getName().equals(MediaBcSchema.VIDEO_FRAME.getPropertyName())) {
-            return false;
-        }
-
-        String mimeType = BcSchema.MIME_TYPE_METADATA.getMetadataValue(property.getMetadata(), null);
-        if (mimeType != null && mimeType.startsWith("image")) {
-            return true;
-        }
-
-        return false;
+    @Inject
+    public void setSchemaRepository(SchemaRepository ontologyRepository) {
+        this.schemaRepository = ontologyRepository;
     }
 }

@@ -1,1 +1,2 @@
 io.bigconnect.dw.image.metadata.ImageOrientationPostMimeTypeWorker
+io.bigconnect.dw.image.metadata.ImageMetadataPostMimeTypeWorker
