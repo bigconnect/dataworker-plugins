@@ -25,7 +25,6 @@ import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.MediaBcSchema;
 import com.mware.core.model.properties.RawObjectSchema;
 import com.mware.core.model.properties.types.PropertyMetadata;
-import com.mware.core.model.role.GeAuthorizationRepository;
 import com.mware.core.model.schema.SchemaProperty;
 import com.mware.core.model.schema.SchemaRepository;
 import com.mware.core.model.workQueue.Priority;

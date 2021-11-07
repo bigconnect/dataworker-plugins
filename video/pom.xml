@@ -14,8 +14,6 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>audio-extractor</module>
-        <module>frame-extractor</module>
         <module>metadata-extractor</module>
         <module>preview</module>
     </modules>

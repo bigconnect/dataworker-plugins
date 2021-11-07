@@ -21,7 +21,6 @@
 
     <modules>
         <module>metadata-extractor</module>
-        <module>face-descriptor-extractor</module>
     </modules>
 
     <dependencies>

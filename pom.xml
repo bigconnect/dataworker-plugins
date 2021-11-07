@@ -97,7 +97,6 @@
     <modules>
         <module>web-schema</module>
         <module>av-utils</module>
-        <module>groovy</module>
         <module>ner</module>
         <module>sentiment</module>
         <module>video</module>
@@ -105,7 +104,6 @@
         <module>image</module>
         <module>text</module>
         <module>classification</module>
-        <module>url-analysis</module>
         <module>mime-type</module>
         <module>google-services</module>
         <module>tester</module>

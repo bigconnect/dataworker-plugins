@@ -37,7 +37,7 @@
 package com.mware.bigconnect.ffmpeg;
 
 public interface ArtifactThumbnailRepositoryProps {
-    int FRAMES_PER_PREVIEW = 20;
+    int FRAMES_PER_MINUTE = 4;
     int PREVIEW_FRAME_WIDTH = 360;
     int PREVIEW_FRAME_HEIGHT = 240;
 }

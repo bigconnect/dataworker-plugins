@@ -133,21 +133,15 @@ public class AVUtils {
             if (probeResult == null)
                 return null;
 
-            double videoDuration = probeResult.format.duration;
-            double defaultFPSToExtract = 1.0;
-            if (videoDuration <= ArtifactThumbnailRepositoryProps.FRAMES_PER_PREVIEW) {
-                defaultFPSToExtract = (double) ArtifactThumbnailRepositoryProps.FRAMES_PER_PREVIEW / videoDuration;
-            }
-
             tempDir = Files.createTempDirectory("frames-").toFile();
 
             FFmpegOutputBuilder output = new FFmpegOutputBuilder()
+                    .setVideoFilter(String.format("fps=fps=%d/60", FRAMES_PER_MINUTE))
                     .setFilename(new File(tempDir, "image-%8d.png").getAbsolutePath());
 
             FFmpegBuilder builder = AVUtils.ffmpeg().builder()
                     .setInput(videoFileName.toFile().getAbsolutePath())
-                    .addOutput(output)
-                    .addExtraArgs("-r").addExtraArgs(String.valueOf(defaultFPSToExtract));
+                    .addOutput(output);
 
             FFmpegExecutor executor = new FFmpegExecutor(AVUtils.ffmpeg(), AVUtils.ffprobe());
             executor.createJob(builder).run();
@@ -160,31 +154,19 @@ public class AVUtils {
                 if (!m.matches()) {
                     continue;
                 }
-                long frameStartTime = (long) ((Double.parseDouble(m.group(1)) / defaultFPSToExtract) * 1000.0);
+                long frameStartTime = Long.parseLong(m.group(1)) * FRAMES_PER_MINUTE;
                 videoFrames.add(Pair.of(frameStartTime, frameFile));
             }
 
             videoFrames.sort(Comparator.comparingLong(Pair::first));
-
-            java.util.List<Pair<Long, File>> framesForPreview = new ArrayList<>();
-            double skip = (double) videoFrames.size() / (double) FRAMES_PER_PREVIEW;
-            for (double i = 0; i < videoFrames.size(); i += skip) {
-                framesForPreview.add(videoFrames.get((int) Math.floor(i)));
-            }
-            if (framesForPreview.size() < FRAMES_PER_PREVIEW) {
-                framesForPreview.add(videoFrames.get(videoFrames.size() - 1));
-            }
-            if (framesForPreview.size() > FRAMES_PER_PREVIEW) {
-                framesForPreview.remove(framesForPreview.size() - 1);
-            }
 
             int previewFrameWidth = PREVIEW_FRAME_WIDTH;
             int previewFrameHeight = PREVIEW_FRAME_HEIGHT;
 
             BufferedImage previewImage = null;
             Graphics g = null;
-            for (int i = 0; i < framesForPreview.size(); i++) {
-                Pair<Long, File> videoFrame = framesForPreview.get(i);
+            for (int i = 0; i < videoFrames.size(); i++) {
+                Pair<Long, File> videoFrame = videoFrames.get(i);
                 BufferedImage img = loadImage(videoFrame.other());
                 int widthImage = img.getWidth(null);
                 int heightImage = img.getHeight(null);
@@ -201,7 +183,7 @@ public class AVUtils {
                     }
                     previewFrameWidth = (int) calculatedWidth;
                     previewFrameHeight = (int) calculatedHeight;
-                    previewImage = new BufferedImage(previewFrameWidth * framesForPreview.size(), previewFrameHeight, BufferedImage.TYPE_INT_RGB);
+                    previewImage = new BufferedImage(previewFrameWidth * videoFrames.size(), previewFrameHeight, BufferedImage.TYPE_INT_RGB);
                     g = previewImage.createGraphics();
                 }
                 int dx1 = i * previewFrameWidth;

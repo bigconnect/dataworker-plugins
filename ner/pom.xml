@@ -15,10 +15,6 @@
 
     <modules>
         <module>common</module>
-        <module>corenlp</module>
-        <module>spacy</module>
-        <module>regex</module>
-        <module>location-resolver</module>
         <module>intellidockers</module>
     </modules>
 
