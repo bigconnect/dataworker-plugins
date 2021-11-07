@@ -36,6 +36,7 @@
  */
 package com.mware.bigconnect.ffmpeg;
 
+import com.mware.ge.collection.Pair;
 import net.bramp.ffmpeg.probe.FFmpegProbeResult;
 import org.apache.commons.io.IOUtils;
 import org.junit.Assert;
@@ -82,8 +83,8 @@ public class AVMediaTests {
 
     @Test
     public void testPreviewImage() throws Exception {
-        BufferedImage image = AVUtils.createVideoPreviewImage(Paths.get(getClass().getResource("/file_example.mp4").toURI()));
-        ImageIO.write(image, "png", Files.createTempFile("preview-", ".png").toFile());
-        Assert.assertNotNull(image);
+        Pair<Integer, BufferedImage> image = AVUtils.createVideoPreviewImage(Paths.get(getClass().getResource("/file_example.mp4").toURI()));
+        ImageIO.write(image.other(), "png", Files.createTempFile("preview-", ".png").toFile());
+        Assert.assertNotNull(image.other());
     }
 }

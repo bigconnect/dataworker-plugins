@@ -51,10 +51,8 @@ import com.mware.core.model.properties.types.DoubleBcProperty;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
 import com.mware.core.util.ProcessRunner;
-import com.mware.ge.Element;
-import com.mware.ge.Metadata;
-import com.mware.ge.Property;
-import com.mware.ge.Vertex;
+import com.mware.ge.*;
+import com.mware.ge.collection.Pair;
 import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.values.storable.ByteArray;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
@@ -111,13 +109,14 @@ public class VideoPreviewWorker extends DataWorker {
             metadata.add(BcSchema.MIME_TYPE.getPropertyName(), Values.stringValue("image/png"), getVisibilityTranslator().getDefaultVisibility());
             MediaBcSchema.RAW_POSTER_FRAME.updateProperty(changedProperties, element, m, PROPERTY_KEY, spv, metadata, data.getProperty().getVisibility());
 
-            BufferedImage videoPreviewImage = AVUtils.createVideoPreviewImage(videoFile);
+            Pair<Integer, BufferedImage> videoPreviewImage = AVUtils.createVideoPreviewImage(videoFile);
             if (videoPreviewImage != null) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
-                ImageIO.write(videoPreviewImage, "png", out);
+                ImageIO.write(videoPreviewImage.other(), "png", out);
                 spv = new DefaultStreamingPropertyValue(new ByteArrayInputStream(out.toByteArray()), ByteArray.class);
                 spv.searchIndex(false);
                 metadata = data.createPropertyMetadata(getUser());
+                MediaBcSchema.METADATA_VIDEO_PREVIEW_FRAMES.setMetadata(metadata, Long.valueOf(videoPreviewImage.first()), Visibility.EMPTY);
                 MediaBcSchema.VIDEO_PREVIEW_IMAGE.updateProperty(changedProperties, element, m, spv, metadata, data.getProperty().getVisibility());
             }
 

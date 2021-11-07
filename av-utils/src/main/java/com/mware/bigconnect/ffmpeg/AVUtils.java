@@ -126,7 +126,7 @@ public class AVUtils {
     }
 
     // creates a very wide PNG image with frames extracted from the video
-    public static BufferedImage createVideoPreviewImage(Path videoFileName) {
+    public static Pair<Integer, BufferedImage> createVideoPreviewImage(Path videoFileName) {
         File tempDir = null;
         try {
             FFmpegProbeResult probeResult = AVMediaInfo.probe(videoFileName.toFile().getAbsolutePath());
@@ -197,7 +197,7 @@ public class AVUtils {
 
             if (previewImage != null) {
                 g.dispose();
-                return previewImage;
+                return Pair.of(videoFrames.size(), previewImage);
             }
 
         } catch (IOException ex) {
