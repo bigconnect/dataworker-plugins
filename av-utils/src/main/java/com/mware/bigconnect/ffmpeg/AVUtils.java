@@ -133,10 +133,14 @@ public class AVUtils {
             if (probeResult == null)
                 return null;
 
+            double videoDuration = probeResult.format.duration;
             tempDir = Files.createTempDirectory("frames-").toFile();
 
+            int framesPerMinute = videoDuration < 60 ? 1 : FRAMES_PER_MINUTE;
+            String extractionRule = videoDuration > 60 ? ""+FRAMES_PER_MINUTE+"/"+60 : "1/"+videoDuration;
+
             FFmpegOutputBuilder output = new FFmpegOutputBuilder()
-                    .setVideoFilter(String.format("fps=fps=%d/60", FRAMES_PER_MINUTE))
+                    .setVideoFilter("fps=fps="+extractionRule)
                     .setFilename(new File(tempDir, "image-%8d.png").getAbsolutePath());
 
             FFmpegBuilder builder = AVUtils.ffmpeg().builder()
@@ -154,7 +158,7 @@ public class AVUtils {
                 if (!m.matches()) {
                     continue;
                 }
-                long frameStartTime = Long.parseLong(m.group(1)) * FRAMES_PER_MINUTE;
+                long frameStartTime = Long.parseLong(m.group(1)) * framesPerMinute;
                 videoFrames.add(Pair.of(frameStartTime, frameFile));
             }
 
