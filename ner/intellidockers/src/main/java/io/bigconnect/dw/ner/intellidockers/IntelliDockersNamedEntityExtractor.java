@@ -61,12 +61,14 @@ import static io.bigconnect.dw.ner.intellidockers.IntelliDockersSchemaContributi
 public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
     public final static BcLogger LOGGER = BcLoggerFactory.getLogger(IntelliDockersNamedEntityExtractor.class);
     public static final String CONFIG_INTELLIDOCKERS_URL = "intellidockers.ron.ner.url";
+    public static final String CONFIG_INTELLIDOCKERS_SCORE = "intellidockers.ron.ner.score";
 
     private Configuration configuration;
     private WikipediaDemonymMap demonyms;
     private IntelliDockersNer service;
     private GeMetricRegistry metricRegistry;
     private Timer detectTimer;
+    private double score;
 
     @Override
     public void initialize(Configuration config, GeMetricRegistry metricRegistry) throws ClassCastException {
@@ -74,6 +76,9 @@ public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
         this.metricRegistry = metricRegistry;
         demonyms = new WikipediaDemonymMap();
         String url = config.get(CONFIG_INTELLIDOCKERS_URL, null);
+        String strScore = config.get(CONFIG_INTELLIDOCKERS_SCORE, "0.7");
+        score = Double.parseDouble(strScore);
+
         Preconditions.checkState(!StringUtils.isEmpty(url), "Please provide the '" + CONFIG_INTELLIDOCKERS_URL + "' config parameter");
 
         OkHttpClient client = new OkHttpClient().newBuilder()
@@ -123,6 +128,8 @@ public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
                         continue;
 
                     Entities.EntityDetail detail = entity.details.get(0);
+                    if (detail.score < score)
+                        continue;
 
                     int start = detail.start;
 
