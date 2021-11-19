@@ -64,6 +64,7 @@ import com.mware.ge.mutation.ExistingElementMutation;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.StreamingPropertyValue;
+import com.mware.ge.values.storable.TextValue;
 import com.mware.ge.values.storable.Values;
 import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
 import io.bigconnect.dw.text.common.LanguageDetectorUtil;
@@ -332,20 +333,29 @@ public class GoogleTranslateDataWorker extends DataWorker {
         List<Property> propertiesToTranslate = new ArrayList<>();
 
         for (Property property : propertyToTranslate.getProperties(element)) {
-            String titleLanguage = TextPropertyHelper.getTextLanguage(property);
-            if (StringUtils.isEmpty(titleLanguage)) {
-                titleLanguage = languageDetector
-                        .detectLanguage((String) property.getValue().asObjectCopy())
+            String language = TextPropertyHelper.getTextLanguage(property);
+            if (StringUtils.isEmpty(language)) {
+                String strPropValue = null;
+                if (property.getValue() instanceof StreamingPropertyValue)
+                    strPropValue = ((StreamingPropertyValue) property.getValue()).readToString();
+                else if (property.getValue() instanceof TextValue)
+                    strPropValue = ((TextValue) property.getValue()).stringValue();
+                else
+                    strPropValue = property.getValue().prettyPrint();
+
+                language = languageDetector
+                        .detectLanguage(strPropValue)
                         .orElse("");
-                if (!StringUtils.isEmpty(titleLanguage)) {
+
+                if (!StringUtils.isEmpty(language)) {
                     ExistingElementMutation<Vertex> m = element.prepareMutation();
                     m.setPropertyMetadata(property, BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
-                            Values.stringValue(titleLanguage), Visibility.EMPTY);
+                            Values.stringValue(language), Visibility.EMPTY);
                     element = m.save(getAuthorizations());
                 }
             }
-            if (StringUtils.isEmpty(titleLanguage) || !targetLanguage.equals(titleLanguage)) {
-                boolean canTranslate = StringUtils.isEmpty(titleLanguage) || supportedLanguages.contains(titleLanguage);
+            if (StringUtils.isEmpty(language) || !targetLanguage.equals(language)) {
+                boolean canTranslate = StringUtils.isEmpty(language) || supportedLanguages.contains(language);
                 if (canTranslate)
                     propertiesToTranslate.add(property);
             }
