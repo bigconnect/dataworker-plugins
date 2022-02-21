@@ -1,0 +1,180 @@
+[
+  {
+    "2020": {
+      "entity": "2020",
+      "count": 1,
+      "type": "TEMPORAL_DATE",
+      "details": [
+        [
+          {
+            "score": 0.8752278685569763,
+            "start": 130,
+            "end": 134,
+            "sentiment": {
+              "label": "neg",
+              "score": 0.9013936519622803
+            }
+          }
+        ]
+      ],
+      "sentiment": {
+        "label": "neg",
+        "score": 0.9013936519622803
+      }
+    },
+    "Primăriei Municipiului Bucureşti": {
+      "entity": "Primăriei Municipiului Bucureşti",
+      "count": 1,
+      "type": "ORGANIZATION",
+      "details": [
+        [
+          {
+            "score": 0.9953064918518066,
+            "start": 93,
+            "end": 125,
+            "sentiment": {
+              "label": "neg",
+              "score": 0.9013936519622803
+            }
+          }
+        ]
+      ],
+      "sentiment": {
+        "label": "neg",
+        "score": 0.9013936519622803
+      }
+    },
+    "Agerpres": {
+      "entity": "Agerpres",
+      "count": 1,
+      "type": "ORGANIZATION",
+      "details": [
+        [
+          {
+            "score": 0.9965947270393372,
+            "start": 315,
+            "end": 323,
+            "sentiment": {
+              "label": "pos",
+              "score": 0.42296361923217773
+            }
+          }
+        ]
+      ],
+      "sentiment": {
+        "label": "pos",
+        "score": 0.42296361923217773
+      }
+    },
+    "anii precedenţi": {
+      "entity": "anii precedenţi",
+      "count": 1,
+      "type": "TEMPORAL_TIME",
+      "details": [
+        [
+          {
+            "score": 0.930328369140625,
+            "start": 255,
+            "end": 270,
+            "sentiment": {
+              "label": "neg",
+              "score": 0.42665767669677734
+            }
+          }
+        ]
+      ],
+      "sentiment": {
+        "label": "neg",
+        "score": 0.42665767669677734
+      }
+    },
+    "USR": {
+      "entity": "USR",
+      "count": 1,
+      "type": "ORGANIZATION",
+      "details": [
+        [
+          {
+            "score": 0.9951273798942566,
+            "start": 57,
+            "end": 60,
+            "sentiment": {
+              "label": "neg",
+              "score": 0.6049267649650574
+            }
+          }
+        ]
+      ],
+      "sentiment": {
+        "label": "neg",
+        "score": 0.6049267649650574
+      }
+    },
+    "Primăria Capitalei": {
+      "entity": "Primăria Capitalei",
+      "count": 1,
+      "type": "ORGANIZATION",
+      "details": [
+        [
+          {
+            "score": 0.9797384738922119,
+            "start": 26,
+            "end": 44,
+            "sentiment": {
+              "label": "neg",
+              "score": 0.6049267649650574
+            }
+          }
+        ]
+      ],
+      "sentiment": {
+        "label": "neg",
+        "score": 0.6049267649650574
+      }
+    },
+    "Nicuşor Dan": {
+      "entity": "Nicuşor Dan",
+      "count": 1,
+      "type": "PERSON",
+      "details": [
+        [
+          {
+            "score": 0.9871719479560852,
+            "start": 62,
+            "end": 73,
+            "sentiment": {
+              "label": "neg",
+              "score": 0.48617273569107056
+            }
+          }
+        ]
+      ],
+      "sentiment": {
+        "label": "neg",
+        "score": 0.48617273569107056
+      }
+    },
+    "7,2 miliarde de lei": {
+      "entity": "7,2 miliarde de lei",
+      "count": 1,
+      "type": "IDENTIFIER_MONEY",
+      "details": [
+        [
+          {
+            "score": 0.9927549958229065,
+            "start": 218,
+            "end": 237,
+            "sentiment": {
+              "label": "neg",
+              "score": 0.7539253234863281
+            }
+          }
+        ]
+      ],
+      "sentiment": {
+        "label": "neg",
+        "score": 0.7539253234863281
+      }
+    }
+  }
+]

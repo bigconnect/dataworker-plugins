@@ -57,10 +57,7 @@ import com.mware.ge.query.QueryResultsIterable;
 import com.mware.ge.values.storable.StreamingPropertyValue;
 import com.mware.ge.values.storable.Values;
 import com.mware.ontology.IgnoredMimeTypes;
-import io.bigconnect.dw.ner.common.extractor.ExtractedEntities;
-import io.bigconnect.dw.ner.common.extractor.GenericOccurrence;
-import io.bigconnect.dw.ner.common.extractor.OrganizationOccurrence;
-import io.bigconnect.dw.ner.common.extractor.PersonOccurrence;
+import io.bigconnect.dw.ner.common.extractor.*;
 import io.bigconnect.dw.ner.common.orgs.ResolvedOrganization;
 import io.bigconnect.dw.ner.common.people.ResolvedPerson;
 import io.bigconnect.dw.text.common.NerUtils;
@@ -138,13 +135,12 @@ public class EntityExtractionDataWorker extends DataWorker {
             ExtractedEntities entities = ParseManager.extractAndResolve(getConfiguration(), getGraph().getMetricsRegistry(), language, text);
             if (entities != null) {
                 LOGGER.debug("Adding entities to: "+data.getElement().getId());
-                VisibilityJson tmVisibilityJson = new VisibilityJson();
-                tmVisibilityJson.setSource("");
 
-                addLocations(outVertex, textProperty, tmVisibilityJson, entities);
-                addPersons(outVertex, textProperty, tmVisibilityJson, entities);
-                addOrganizations(outVertex, textProperty, tmVisibilityJson, entities);
-                addOtherEntities(outVertex, textProperty, tmVisibilityJson, entities);
+                addLocations(outVertex, textProperty, entities);
+                addPersons(outVertex, textProperty, entities);
+                addOrganizations(outVertex, textProperty, entities);
+                addOtherEntities(outVertex, textProperty, entities);
+
                 getGraph().flush();
 
                 pushTextUpdated(data);
@@ -156,7 +152,7 @@ public class EntityExtractionDataWorker extends DataWorker {
         }
     }
 
-    private List<Vertex> addLocations(Vertex outVertex, Property property, VisibilityJson visibilityJson, ExtractedEntities entities) {
+    private List<Vertex> addLocations(Vertex outVertex, Property property, ExtractedEntities entities) {
         Set<String> alreadyResolvedMentions = new HashSet<>();
         List<Vertex> termMentions = new ArrayList<>();
 
@@ -170,16 +166,32 @@ public class EntityExtractionDataWorker extends DataWorker {
             if(StringUtils.isEmpty(name) || alreadyResolvedMentions.contains(name))
                 continue;
 
-            Vertex termMention = termMentionUtils.createTermMention(
-                    outVertex,
-                    property.getKey(),
-                    property.getName(),
-                    name,
-                    SchemaConstants.CONCEPT_TYPE_LOCATION,
-                    start,
-                    end,
-                    visibilityJson
-            );
+            Vertex termMention;
+            if (resolvedLocation.getLocation() instanceof ExtLocationOccurence
+                    && ((ExtLocationOccurence)resolvedLocation.getLocation()).sentimentScore > 0)
+            {
+                int sentiment = ((ExtLocationOccurence)resolvedLocation.getLocation()).sentiment;
+                double sentimentScore = ((ExtLocationOccurence)resolvedLocation.getLocation()).sentimentScore;
+                termMention = createTermMentionWithSentiment(
+                        outVertex,
+                        property,
+                        name,
+                        SchemaConstants.CONCEPT_TYPE_LOCATION,
+                        start,
+                        end,
+                        sentiment,
+                        sentimentScore
+                );
+            } else {
+                termMention = createTermMentionWithoutSentiment(
+                        outVertex,
+                        property,
+                        name,
+                        SchemaConstants.CONCEPT_TYPE_LOCATION,
+                        start,
+                        end
+                );
+            }
             termMentions.add(termMention);
 
             Vertex resolvedToVertex = findExistingVertexWithConceptAndTitle(SchemaConstants.CONCEPT_TYPE_LOCATION, name);
@@ -201,7 +213,7 @@ public class EntityExtractionDataWorker extends DataWorker {
         return termMentions;
     }
 
-    private List<Vertex> addOrganizations(Vertex outVertex, Property property, VisibilityJson visibilityJson, ExtractedEntities entities) {
+    private List<Vertex> addOrganizations(Vertex outVertex, Property property, ExtractedEntities entities) {
         List<Vertex> termMentions = new ArrayList<>();
         Set<String> alreadyResolvedMentions = new HashSet<>();
         List<ResolvedOrganization> resolvedOrganizations = entities.getResolvedOrganizations();
@@ -216,16 +228,30 @@ public class EntityExtractionDataWorker extends DataWorker {
             if(StringUtils.isEmpty(name) || alreadyResolvedMentions.contains(name))
                 continue;
 
-            Vertex termMention = termMentionUtils.createTermMention(
-                    outVertex,
-                    property.getKey(),
-                    property.getName(),
-                    name,
-                    SchemaConstants.CONCEPT_TYPE_ORGANIZATION,
-                    start,
-                    end,
-                    visibilityJson
-            );
+            Vertex termMention;
+            if (occurrence.sentimentScore > 0) {
+                int sentiment = occurrence.sentiment;
+                double sentimentScore = occurrence.sentimentScore;
+                termMention = createTermMentionWithSentiment(
+                        outVertex,
+                        property,
+                        name,
+                        SchemaConstants.CONCEPT_TYPE_ORGANIZATION,
+                        start,
+                        end,
+                        sentiment,
+                        sentimentScore
+                );
+            } else {
+                termMention = createTermMentionWithoutSentiment(
+                        outVertex,
+                        property,
+                        name,
+                        SchemaConstants.CONCEPT_TYPE_ORGANIZATION,
+                        start,
+                        end
+                );
+            }
             termMentions.add(termMention);
 
             Vertex resolvedToVertex = findExistingVertexWithConceptAndTitle(SchemaConstants.CONCEPT_TYPE_ORGANIZATION, name);
@@ -243,7 +269,7 @@ public class EntityExtractionDataWorker extends DataWorker {
         return termMentions;
     }
 
-    private List<Vertex> addPersons(Vertex outVertex, Property property, VisibilityJson visibilityJson, ExtractedEntities entities) {
+    private List<Vertex> addPersons(Vertex outVertex, Property property, ExtractedEntities entities) {
         Set<String> alreadyResolvedMentions = new HashSet<>();
         List<Vertex> termMentions = new ArrayList<>();
         List<ResolvedPerson> resolvedOrganizations = entities.getResolvedPeople();
@@ -258,16 +284,31 @@ public class EntityExtractionDataWorker extends DataWorker {
             if(StringUtils.isEmpty(name) || alreadyResolvedMentions.contains(name))
                 continue;
 
-            Vertex termMention = termMentionUtils.createTermMention(
-                    outVertex,
-                    property.getKey(),
-                    property.getName(),
-                    name,
-                    SchemaConstants.CONCEPT_TYPE_PERSON,
-                    start,
-                    end,
-                    visibilityJson
-            );
+            Vertex termMention;
+
+            if (occurrence.sentimentScore > 0) {
+                int sentiment = occurrence.sentiment;
+                double sentimentScore = occurrence.sentimentScore;
+                termMention = createTermMentionWithSentiment(
+                        outVertex,
+                        property,
+                        name,
+                        SchemaConstants.CONCEPT_TYPE_PERSON,
+                        start,
+                        end,
+                        sentiment,
+                        sentimentScore
+                );
+            } else {
+                termMention = createTermMentionWithoutSentiment(
+                        outVertex,
+                        property,
+                        name,
+                        SchemaConstants.CONCEPT_TYPE_PERSON,
+                        start,
+                        end
+                );
+            }
             termMentions.add(termMention);
 
             Vertex resolvedToVertex = findExistingVertexWithConceptAndTitle(SchemaConstants.CONCEPT_TYPE_PERSON, name);
@@ -286,7 +327,7 @@ public class EntityExtractionDataWorker extends DataWorker {
         return termMentions;
     }
 
-    private List<Vertex> addOtherEntities(Vertex outVertex, Property property, VisibilityJson visibilityJson, ExtractedEntities entities) {
+    private List<Vertex> addOtherEntities(Vertex outVertex, Property property, ExtractedEntities entities) {
         Set<String> alreadyResolvedMentions = new HashSet<>();
         List<Vertex> termMentions = new ArrayList<>();
         List<GenericOccurrence> otherEntities = entities.getOtherEntities();
@@ -300,16 +341,30 @@ public class EntityExtractionDataWorker extends DataWorker {
             if(StringUtils.isEmpty(name) || alreadyResolvedMentions.contains(name))
                 continue;
 
-            Vertex termMention = termMentionUtils.createTermMention(
-                    outVertex,
-                    property.getKey(),
-                    property.getName(),
-                    name,
-                    conceptType,
-                    start,
-                    end,
-                    visibilityJson
-            );
+            Vertex termMention;
+            if (entity.sentimentScore > 0) {
+                int sentiment = entity.sentiment;
+                double sentimentScore = entity.sentimentScore;
+                termMention = createTermMentionWithSentiment(
+                        outVertex,
+                        property,
+                        name,
+                        conceptType,
+                        start,
+                        end,
+                        sentiment,
+                        sentimentScore
+                );
+            } else {
+                termMention = createTermMentionWithoutSentiment(
+                        outVertex,
+                        property,
+                        name,
+                        conceptType,
+                        start,
+                        end
+                );
+            }
             termMentions.add(termMention);
 
             Vertex resolvedToVertex = findExistingVertexWithConceptAndTitle(conceptType, name);
@@ -370,5 +425,64 @@ public class EntityExtractionDataWorker extends DataWorker {
         ElementMutation<Vertex> vertexMutation = getGraph().prepareVertex(id, visibility, conceptType);
         BcSchema.TITLE.addPropertyValue(vertexMutation, "", title, metadata, visibility);
         return vertexMutation.save(getAuthorizations());
+    }
+
+    private Vertex createTermMentionWithSentiment(
+            Vertex outVertex,
+            Property property,
+            String name,
+            String conceptType,
+            int start,
+            int end,
+            int sentiment,
+            double sentimentScore
+    ) {
+        VisibilityJson tmVisibilityJson = new VisibilityJson();
+        tmVisibilityJson.setSource("");
+
+        TermMentionBuilder tmb = new TermMentionBuilder()
+                .outVertex(outVertex)
+                .propertyKey(property.getKey())
+                .propertyName(property.getName())
+                .start(start)
+                .end(end)
+                .title(name)
+                .conceptName(conceptType)
+                .visibilityJson(tmVisibilityJson)
+                .process(getClass().getName())
+                .score(sentimentScore);
+
+        if (sentiment == -1) {
+            tmb.style(String.format("color: rgb(255, 0, 0);"));
+        } else if (sentiment == 1) {
+            tmb.style(String.format("color: rgb(0, 255, 0);"));
+        } else {
+            tmb.style(String.format("color: rgb(0, 0, 0);"));
+        }
+
+        return tmb.save(getGraph(), getVisibilityTranslator(), getUser(), getAuthorizations());
+    }
+
+    private Vertex createTermMentionWithoutSentiment(
+            Vertex outVertex,
+            Property property,
+            String name,
+            String conceptType,
+            int start,
+            int end
+    ) {
+        VisibilityJson tmVisibilityJson = new VisibilityJson();
+        tmVisibilityJson.setSource("");
+
+        return termMentionUtils.createTermMention(
+                outVertex,
+                property.getKey(),
+                property.getName(),
+                name,
+                conceptType,
+                start,
+                end,
+                tmVisibilityJson
+        );
     }
 }

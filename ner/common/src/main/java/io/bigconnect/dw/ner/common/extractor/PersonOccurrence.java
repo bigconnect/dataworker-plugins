@@ -45,6 +45,15 @@ public class PersonOccurrence {
     // which the person name starts
     public final int position;
 
+    public int sentiment;
+    public double sentimentScore;
+
+    public PersonOccurrence(String text, int position, int sentiment, double sentimentScore) {
+        this(text, position);
+        this.sentiment = sentiment;
+        this.sentimentScore = sentimentScore;
+    }
+
     public PersonOccurrence(String text, int position) {
         this.text = text;
         this.position = position;

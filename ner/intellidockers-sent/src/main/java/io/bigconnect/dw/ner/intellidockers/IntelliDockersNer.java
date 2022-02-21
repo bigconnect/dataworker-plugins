@@ -34,28 +34,16 @@
  * embedding the product in a web application, shipping BigConnect with a
  * closed source product.
  */
-package io.bigconnect.dw.ner.common.extractor;
+package io.bigconnect.dw.ner.intellidockers;
 
-public class GenericOccurrence {
-    // text representation of the entity
-    public final String text;
-    // type of the entity
-    public final String conceptType;
-    // position in text
-    public final int position;
+import retrofit2.Call;
+import retrofit2.http.Body;
+import retrofit2.http.POST;
 
-    public int sentiment;
-    public double sentimentScore;
+import java.util.List;
+import java.util.Map;
 
-    public GenericOccurrence(String text, String conceptType, int position, int sentiment, double sentimentScore) {
-        this(text, conceptType, position);
-        this.sentiment = sentiment;
-        this.sentimentScore = sentimentScore;
-    }
-
-    public GenericOccurrence(String text, String conceptType, int position) {
-        this.text = text;
-        this.conceptType = conceptType;
-        this.position = position;
-    }
+public interface IntelliDockersNer {
+    @POST("rest/process")
+    Call<List<Map<String, Entity>>> process(@Body NerRequest request);
 }

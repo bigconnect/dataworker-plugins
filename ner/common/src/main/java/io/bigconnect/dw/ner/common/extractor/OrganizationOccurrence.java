@@ -44,6 +44,15 @@ public class OrganizationOccurrence {
     // number of UTF-16 code units from the start of the document
     public final int position;
 
+    public int sentiment = 0;
+    public double sentimentScore = 0.0d;
+
+    public OrganizationOccurrence(String text, int position, int sentiment, double sentimentScore) {
+        this(text, position);
+        this.sentiment = sentiment;
+        this.sentimentScore = sentimentScore;
+    }
+
     public OrganizationOccurrence(String text, int position) {
         this.text = text;
         this.position = position;

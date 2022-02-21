@@ -17,3 +17,4 @@ datastore/
 docs/java
 *.iml
 .idea/
+.gradle/

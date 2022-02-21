@@ -34,28 +34,27 @@
  * embedding the product in a web application, shipping BigConnect with a
  * closed source product.
  */
-package io.bigconnect.dw.ner.common.extractor;
+package io.bigconnect.dw.ner.intellidockers;
 
-public class GenericOccurrence {
-    // text representation of the entity
-    public final String text;
-    // type of the entity
-    public final String conceptType;
-    // position in text
-    public final int position;
+import java.util.ArrayList;
+import java.util.List;
 
-    public int sentiment;
-    public double sentimentScore;
+public class Entity {
+    public String entity;
+    public String type;
+    public int count;
+    public List<List<EntityDetail>> details = new ArrayList<>();
+    public Sentiment sentiment;
 
-    public GenericOccurrence(String text, String conceptType, int position, int sentiment, double sentimentScore) {
-        this(text, conceptType, position);
-        this.sentiment = sentiment;
-        this.sentimentScore = sentimentScore;
+    public static class EntityDetail {
+        public double score;
+        public int start;
+        public int end;
+        public Sentiment sentiment;
     }
 
-    public GenericOccurrence(String text, String conceptType, int position) {
-        this.text = text;
-        this.conceptType = conceptType;
-        this.position = position;
+    public static class Sentiment {
+        public String label;
+        public double score;
     }
 }
