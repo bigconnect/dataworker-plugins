@@ -48,6 +48,7 @@ public class TestNerWithSentiment extends InMemoryGraphTestBase {
             "bugetul Primăriei Municipiului Bucureşti pe 2020 'nu are nicio legătură cu realitatea', " +
             "în condiţiile în care veniturile estimate – 7,2 miliarde de lei – sunt, ca şi în anii precedenţi, " +
             "supraevaluate cu aproximativ 75%, transmite Agerpres.";
+    String TEXT2 = "Ion este bun, iar Gheorghe este rau";
 
     @Test
     public void test() throws Exception {
@@ -99,7 +100,10 @@ public class TestNerWithSentiment extends InMemoryGraphTestBase {
             String style = BcSchema.TERM_MENTION_STYLE.getPropertyValue(tm);
             String concept = BcSchema.TERM_MENTION_CONCEPT_TYPE.getPropertyValue(tm);
             double score = BcSchema.TERM_MENTION_SCORE.getPropertyValue(tm);
-            System.out.println(String.format("%s[%d - %d] => %s:%f (%s)", title, start, end, concept, score, style));
+            System.out.printf("%s[%d - %d] => %s:%f (%s)%n", title, start, end, concept, score, style);
         }
+
+//        System.out.println("Mock server listening on port: "+mockServer.getPort());
+//        Thread.sleep(5000000L);
     }
 }
