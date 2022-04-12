@@ -119,14 +119,14 @@ public class IntelliDockersNamedEntityExtractorWithSentiment implements EntityEx
 
         try {
             PausableTimerContext t = new PausableTimerContext(detectTimer);
-            Response<List<Map<String, Entity>>> response = service.process(new NerRequest(text, "ron"))
+            Response<Map<String, Entity>> response = service.process(new NerRequest(text, "ron"))
                     .execute();
             t.stop();
 
             if (response.isSuccessful() && response.body() != null) {
-                List<Map<String, Entity>> body = response.body();
+                Map<String, Entity> body = response.body();
                 if (body != null && body.size() > 0) {
-                    for (Entity entity : body.get(0).values()) {
+                    for (Entity entity : body.values()) {
                         if (entity.details.size() == 0)
                             continue;
 

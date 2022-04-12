@@ -45,5 +45,5 @@ import java.util.Map;
 
 public interface IntelliDockersNer {
     @POST("rest/process")
-    Call<List<Map<String, Entity>>> process(@Body NerRequest request);
+    Call<Map<String, Entity>> process(@Body NerRequest request);
 }
