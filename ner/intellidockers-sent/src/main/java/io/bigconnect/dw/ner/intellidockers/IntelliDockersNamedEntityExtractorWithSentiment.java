@@ -179,6 +179,8 @@ public class IntelliDockersNamedEntityExtractorWithSentiment implements EntityEx
                 } else {
                     LOGGER.error("Could not extract entities. Code: %s, body: %s", response.errorBody(), response.code());
                 }
+            } else{
+                LOGGER.error("Got unsuccessfully error.\n code: %s, body: %s", response.code(), response.errorBody());
             }
         } catch (IOException e) {
             LOGGER.warn("Could not extract entities: %s", e.getMessage());
