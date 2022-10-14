@@ -36,7 +36,6 @@
  */
 package io.bigconnect.dw.ner.intellidockers;
 
-import com.bericotech.clavin.extractor.LocationOccurrence;
 import com.mware.core.config.Configuration;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
@@ -53,7 +52,6 @@ import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -177,10 +175,10 @@ public class IntelliDockersNamedEntityExtractorWithSentiment implements EntityEx
                         }
                     }
                 } else {
-                    LOGGER.error("Could not extract entities. Code: %s, body: %s", response.errorBody(), response.code());
+                    LOGGER.error("Could not extract entities. Code: %s, error-body: %s, body", response.errorBody().string(), response.code());
                 }
-            } else{
-                LOGGER.error("Got unsuccessfully error.\n code: %s, body: %s", response.code(), response.errorBody());
+            } else {
+                LOGGER.error("Got unsuccessfully error.\n code: %s, body: %s", response.code(), response.errorBody().string());
             }
         } catch (IOException e) {
             LOGGER.warn("Could not extract entities: %s", e.getMessage());
