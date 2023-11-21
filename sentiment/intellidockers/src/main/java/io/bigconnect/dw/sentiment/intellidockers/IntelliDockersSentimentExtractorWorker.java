@@ -77,12 +77,12 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-@Name("IntelliDockers Sentiment Analysis")
-@Description("Extracts sentiment from text using IntelliDockers")
+@Name("Sentiment Analysis for Romanian")
+@Description("Extracts sentiment from Romanian text")
 public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(IntelliDockersSentimentExtractorWorker.class);
-    public static final String CONFIG_INTELLIDOCKERS_URL = "intellidockers.ron.sentiment.url";
-    public static final String CONFIG_INTELLIDOCKERS_PARAGRAPHS = "intellidockers.ron.sentiment.paragraphs";
+    public static final String CONFIG_INTELLIDOCKERS_URL = "sentiment.ron.url";
+    public static final String CONFIG_INTELLIDOCKERS_PARAGRAPHS = "sentiment.ron.paragraphs";
 
     private IntelliDockersSentiment service;
     private boolean doParagraphs;
@@ -109,7 +109,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
 
         service = retrofit.create(IntelliDockersSentiment.class);
 
-        this.doParagraphs = getConfiguration().getBoolean(CONFIG_INTELLIDOCKERS_PARAGRAPHS, true);
+        this.doParagraphs = getConfiguration().getBoolean(CONFIG_INTELLIDOCKERS_PARAGRAPHS, false);
         this.detectTimer = getGraph().getMetricsRegistry().getTimer(getClass(), "sentiment-time");
     }
 

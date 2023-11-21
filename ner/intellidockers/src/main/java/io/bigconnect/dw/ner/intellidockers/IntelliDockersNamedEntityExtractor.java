@@ -60,8 +60,8 @@ import static io.bigconnect.dw.ner.intellidockers.IntelliDockersSchemaContributi
 
 public class IntelliDockersNamedEntityExtractor implements EntityExtractor {
     public final static BcLogger LOGGER = BcLoggerFactory.getLogger(IntelliDockersNamedEntityExtractor.class);
-    public static final String CONFIG_INTELLIDOCKERS_URL = "intellidockers.ron.ner.url";
-    public static final String CONFIG_INTELLIDOCKERS_SCORE = "intellidockers.ron.ner.score";
+    public static final String CONFIG_INTELLIDOCKERS_URL = "ner.ron.url";
+    public static final String CONFIG_INTELLIDOCKERS_SCORE = "ner.ron.score";
 
     private Configuration configuration;
     private WikipediaDemonymMap demonyms;
