@@ -36,7 +36,13 @@
  */
 package io.bigconnect.dw.sentiment.intellidockers;
 
+import java.util.List;
+
 public class SentimentResponse {
-    public String label;
-    public double score;
+    public List<SentimentCategory> categories;
+
+    public static class SentimentCategory {
+        public String label;
+        public double score;
+    }
 }

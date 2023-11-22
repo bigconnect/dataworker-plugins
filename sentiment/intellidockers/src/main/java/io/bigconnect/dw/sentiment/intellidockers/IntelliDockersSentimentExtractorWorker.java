@@ -174,7 +174,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
             PausableTimerContext t = new PausableTimerContext(detectTimer);
             Response<SentimentResponse> response = service.process(new SentimentRequest(text, "ron"))
                     .execute();
-            t.stop();
+            t.close();
 
             if (response.isSuccessful() && response.body() != null) {
                 String sentiment = toBcSentiment(response.body());
@@ -200,6 +200,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
                             .execute();
                     SentimentResponse result = response.body();
                     if (result != null) {
+                        SentimentResponse.SentimentCategory c = getTopSentimentCategory(result);
                         String sentiment = toBcSentiment(result);
                         TermMentionBuilder tmb = new TermMentionBuilder()
                                 .outVertex(element)
@@ -207,16 +208,16 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
                                 .propertyName(textProperty.getName())
                                 .start(p.getStart())
                                 .end(p.getEnd())
-                                .title(String.format("%s: %f", StringUtils.capitalize(sentiment), result.score))
-                                .score(result.score)
+                                .title(String.format("%s: %f", StringUtils.capitalize(sentiment), c.score))
+                                .score(c.score)
                                 .type("sent")
                                 .visibilityJson(tmVisibilityJson)
                                 .process(getClass().getName());
 
                         if ("positive".equals(sentiment)) {
-                            tmb.style(String.format("background-color: rgba(0, 255, 0, %f);", result.score / 3));
+                            tmb.style(String.format("background-color: rgba(0, 255, 0, %f);", c.score / 3));
                         } else {
-                            tmb.style(String.format("background-color: rgba(255, 0, 0, %f);", result.score / 3));
+                            tmb.style(String.format("background-color: rgba(255, 0, 0, %f);", c.score / 3));
                         }
 
                         tmb.save(getGraph(), getVisibilityTranslator(), getUser(), getAuthorizations());
@@ -241,8 +242,16 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         pushTextUpdated(data);
     }
 
+    private SentimentResponse.SentimentCategory getTopSentimentCategory(SentimentResponse sentiment) {
+        return sentiment.categories.stream()
+                .sorted((o1, o2) -> Double.compare(o2.score, o1.score))
+                .findFirst()
+                .orElseThrow(() -> new BcException("No sentiment found"));
+    }
+
     private String toBcSentiment(SentimentResponse sentiment) {
-        switch (sentiment.label) {
+        SentimentResponse.SentimentCategory c = getTopSentimentCategory(sentiment);
+        switch (c.label) {
             case "neg":
                 return "negative";
             case "pos":
@@ -250,7 +259,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
             case "neu":
                 return "neutral";
             default:
-                throw new IllegalArgumentException("Unknown value: "+sentiment.label);
+                throw new IllegalArgumentException("Unknown value: "+c.label);
         }
     }
 }
