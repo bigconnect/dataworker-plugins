@@ -63,6 +63,7 @@ import com.mware.ge.values.storable.Values;
 import com.mware.ontology.IgnoredMimeTypes;
 import io.bigconnect.dw.text.common.NerUtils;
 import io.bigconnect.dw.text.common.TextSpan;
+import org.apache.commons.collections.map.StaticBucketMap;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import retrofit2.Call;
@@ -75,7 +76,9 @@ import javax.inject.Inject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Name("Sentiment Analysis for Romanian")
 @Description("Extracts sentiment from Romanian text")
@@ -170,33 +173,16 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         }
 
         try {
-            LOGGER.info("Extract sentiment for: "+element.getId());
-            PausableTimerContext t = new PausableTimerContext(detectTimer);
-            Response<SentimentResponse> response = service.process(new SentimentRequest(text, "ron"))
-                    .execute();
-            t.close();
-
-            if (response.isSuccessful() && response.body() != null) {
-                String sentiment = toBcSentiment(response.body());
-                LOGGER.debug("Sentiment for: "+element.getId()+" is: "+sentiment);
-                m = element.prepareMutation();
-                com.mware.ge.Metadata metadata = data.createPropertyMetadata(getUser());
-                m.setProperty(RawObjectSchema.RAW_SENTIMENT.getPropertyName(), Values.stringValue(sentiment), metadata, data.getVisibility());
-                element = m.save(getAuthorizations());
-
-                getGraph().flush();
-            } else {
-                LOGGER.info("Could not extract sentiment for: "+element.getId()+": "+response.code()+" - "+response.errorBody());
-            }
-
             if (doParagraphs) {
                 NerUtils.removeSentimentTermMentions(element, termMentionRepository, getGraph(), getAuthorizations());
                 List<TextSpan> paragraphs = NerUtils.getParagraphs(text);
 
                 VisibilityJson tmVisibilityJson = new VisibilityJson();
                 tmVisibilityJson.setSource("");
+
+                Map<String, Integer> sentiments = new HashMap<>();
                 for (TextSpan p : paragraphs) {
-                    response = service.process(new SentimentRequest(p.getText(), "ron"))
+                    Response<SentimentResponse> response = service.process(new SentimentRequest(p.getText(), "ron"))
                             .execute();
                     SentimentResponse result = response.body();
                     if (result != null) {
@@ -216,14 +202,48 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
 
                         if ("positive".equals(sentiment)) {
                             tmb.style(String.format("background-color: rgba(0, 255, 0, %f);", c.score / 3));
-                        } else {
+                        } else if ("negative".equals(sentiment)) {
                             tmb.style(String.format("background-color: rgba(255, 0, 0, %f);", c.score / 3));
                         }
-
                         tmb.save(getGraph(), getVisibilityTranslator(), getUser(), getAuthorizations());
+                        sentiments.compute(sentiment, (k, v) -> v == null ? 1 : v + 1);
                     }
                 }
+
+                int pos = sentiments.getOrDefault("positive", 0);
+                int neg = sentiments.getOrDefault("negative", 0);
+                int neu = sentiments.getOrDefault("neutral", 0);
+                String sentiment = "neutral";
+                if (pos > neg && pos > neu) {
+                    sentiment = "positive";
+                } else if (neg > pos && neg > neu) {
+                    sentiment = "negative";
+                }
+
+                m = element.prepareMutation();
+                com.mware.ge.Metadata metadata = data.createPropertyMetadata(getUser());
+                m.setProperty(RawObjectSchema.RAW_SENTIMENT.getPropertyName(), Values.stringValue(sentiment), metadata, data.getVisibility());
+                element = m.save(getAuthorizations());
+
                 getGraph().flush();
+            } else {
+                LOGGER.info("Extract sentiment for: "+element.getId());
+                PausableTimerContext t = new PausableTimerContext(detectTimer);
+                Response<SentimentResponse> response = service.process(new SentimentRequest(text, "ron"))
+                        .execute();
+                t.close();
+                if (response.isSuccessful() && response.body() != null) {
+                    String sentiment = toBcSentiment(response.body());
+                    LOGGER.debug("Sentiment for: "+element.getId()+" is: "+sentiment);
+                    m = element.prepareMutation();
+                    com.mware.ge.Metadata metadata = data.createPropertyMetadata(getUser());
+                    m.setProperty(RawObjectSchema.RAW_SENTIMENT.getPropertyName(), Values.stringValue(sentiment), metadata, data.getVisibility());
+                    element = m.save(getAuthorizations());
+
+                    getGraph().flush();
+                } else {
+                    LOGGER.info("Could not extract sentiment for: "+element.getId()+": "+response.code()+" - "+response.errorBody());
+                }
             }
         } catch (IOException e) {
             LOGGER.warn("Could not extract sentiment: %s", e.getMessage());
