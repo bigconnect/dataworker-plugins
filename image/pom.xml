@@ -23,6 +23,7 @@
         <module>metadata-extractor</module>
         <module>object-detector</module>
         <module>ocr</module>
+        <module>captioning</module>
     </modules>
 
     <dependencies>
