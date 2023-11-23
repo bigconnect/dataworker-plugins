@@ -47,12 +47,12 @@ public class IntelliDockersSentimentExtractorWorkerTest extends InMemoryGraphTes
     public void before() throws Exception {
         super.before();
 
-//        container = new GenericContainer(DockerImageName.parse("registry.escor.local/sentiment-ron:latest"))
-//                .withExposedPorts(8998);
-//        container.start();
-//
-//        // give enough time for containers to properly start
-//        Thread.sleep(5000L);
+        container = new GenericContainer(DockerImageName.parse("registry.escor.local/sentiment-ron:latest"))
+                .withExposedPorts(8998);
+        container.start();
+
+        // give enough time for containers to properly start
+        Thread.sleep(5000L);
     }
 
     @After

@@ -8,24 +8,23 @@ import com.mware.core.model.Name;
 import com.mware.core.model.properties.ArtifactDetectedObject;
 import com.mware.core.model.properties.BcSchema;
 import com.mware.core.model.properties.MediaBcSchema;
-import com.mware.core.model.workQueue.Priority;
 import com.mware.core.util.BcLogger;
 import com.mware.core.util.BcLoggerFactory;
-import com.mware.ge.Element;
-import com.mware.ge.Metadata;
-import com.mware.ge.Property;
-import com.mware.ge.Vertex;
+import com.mware.ge.*;
+import com.mware.ge.mutation.ElementMutation;
 import com.mware.ge.util.IOUtils;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.StreamingPropertyValue;
+import com.mware.ge.values.storable.Values;
+import okhttp3.MediaType;
+import okhttp3.RequestBody;
 import org.apache.commons.lang3.StringUtils;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
 
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Name("Object detector")
 @Description("Object detector from images")
@@ -54,8 +53,13 @@ public class ObjectDetectorWorker extends DataWorker {
             return false;
         }
 
-        String mimeType = BcSchema.MIME_TYPE.getFirstPropertyValue(element);
-        return mimeType != null && mimeType.startsWith("image");
+        // trigger manually from the image actions explorer plugin
+        if (ObjectDetectorSchemaContribution.DETECT_OBJECTS.getPropertyName().equals(property.getName())) {
+            String mimeType = BcSchema.MIME_TYPE.getFirstPropertyValue(element);
+            return mimeType != null && mimeType.startsWith("image");
+        }
+
+        return false;
     }
 
     @Override
@@ -65,40 +69,35 @@ public class ObjectDetectorWorker extends DataWorker {
             LOGGER.warn("Could not image data property");
             return;
         }
+
+        Element element = refresh(data.getElement());
+        final ElementMutation<Vertex> m = element.prepareMutation();
+        // delete existing detected objects
+        MediaBcSchema.IMAGE_TAG.getProperties(element).forEach(p -> {
+            MediaBcSchema.IMAGE_TAG.removeProperty(m, p.getKey(), p.getVisibility());
+        });
+        element = m.save(getAuthorizations());
+        getGraph().flush();
+
         byte[] imageData = IOUtils.toBytes(spv.getInputStream());
-        Response<ObjectDetectorResponse> response = service.process(imageData).execute();
+        RequestBody image = RequestBody.create(MediaType.parse("image"), imageData);
+        Response<ObjectDetectorResponse> response = service.process(image).execute();
         ObjectDetectorResponse result = response.body();
         if (result != null) {
-            Integer imageWidth = MediaBcSchema.MEDIA_WIDTH.getPropertyValue(data.getElement());
-            Integer imageHeight = MediaBcSchema.MEDIA_HEIGHT.getPropertyValue(data.getElement());
-            List<ArtifactDetectedObject> detectedObjects = new ArrayList<>();
+            ElementMutation<Vertex> m2 = element.prepareMutation();
+            Set<String> labels = new HashSet<>();
             for (ObjectDetectorResponse.ObjectDetectorItem item : result.objects) {
-                detectedObjects.add(
-                        new ArtifactDetectedObject(
-                                item.box.top_left_x / imageWidth,
-                                item.box.top_left_y / imageHeight,
-                                item.box.bottom_right_x / imageWidth,
-                                item.box.bottom_right_y / imageHeight,
-                                "", ""
-                        )
-                );
+                if (labels.contains(item.label)) {
+                    continue;
+                }
+                int hash = Objects.hash(item.box.bottom_right_x, item.box.bottom_right_y, item.box.top_left_x, item.box.top_left_y, item.label, item.score);
+                Metadata propMetadata = Metadata.create();
+                MediaBcSchema.IMAGE_TAG_SCORE.setMetadata(propMetadata, item.score, Visibility.EMPTY);
+                MediaBcSchema.IMAGE_TAG.addPropertyValue(m2, String.valueOf(hash), item.label, propMetadata, Visibility.EMPTY);
+                labels.add(item.label);
             }
-
-            Metadata metadata = data.createPropertyMetadata(getUser());
-            saveDetectedObjects((Vertex) data.getElement(), metadata, detectedObjects, Priority.HIGH);
+            m2.save(getAuthorizations());
+            getGraph().flush();
         }
-    }
-
-    private void saveDetectedObjects(Vertex artifactVertex, Metadata metadata, List<ArtifactDetectedObject> detectedObjects, Priority priority) {
-        for (ArtifactDetectedObject detectedObject : detectedObjects) {
-            saveDetectedObject(artifactVertex, metadata, detectedObject);
-        }
-        getGraph().flush();
-    }
-
-    private String saveDetectedObject(Vertex artifactVertex, Metadata metadata, ArtifactDetectedObject detectedObject) {
-        String multiKey = detectedObject.getMultivalueKey(ObjectDetectorWorker.class.getSimpleName());
-        MediaBcSchema.DETECTED_OBJECT.addPropertyValue(artifactVertex, multiKey, detectedObject, metadata, artifactVertex.getVisibility(), getAuthorizations());
-        return multiKey;
     }
 }
