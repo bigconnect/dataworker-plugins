@@ -21,6 +21,7 @@
 
     <modules>
         <module>metadata-extractor</module>
+        <module>object-detector</module>
     </modules>
 
     <dependencies>

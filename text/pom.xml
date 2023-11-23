@@ -16,6 +16,7 @@
     <modules>
         <module>common</module>
         <module>language-detector</module>
+        <module>summary</module>
         <module>text-extractor</module>
     </modules>
 
