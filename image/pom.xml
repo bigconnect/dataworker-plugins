@@ -24,6 +24,7 @@
         <module>object-detector</module>
         <module>ocr</module>
         <module>captioning</module>
+        <module>face-detection</module>
     </modules>
 
     <dependencies>
