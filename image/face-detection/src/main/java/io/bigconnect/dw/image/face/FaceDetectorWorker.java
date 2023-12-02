@@ -73,11 +73,18 @@ public class FaceDetectorWorker extends DataWorker {
         }
 
         Element element = refresh(data.getElement());
+        int width = MediaBcSchema.MEDIA_WIDTH.getPropertyValue(element);
+        int height = MediaBcSchema.MEDIA_HEIGHT.getPropertyValue(element);
+
         final ElementMutation<Vertex> m = element.prepareMutation();
-        // delete existing detected objects
+
+        // delete existing elements
         MediaBcSchema.DETECTED_OBJECT.getProperties(element).forEach(p -> {
             MediaBcSchema.DETECTED_OBJECT.removeProperty(m, p.getKey(), p.getVisibility());
         });
+        FaceDetectorSchemaContribution.PERSON_AGE.removeProperty(m, Visibility.EMPTY);
+        FaceDetectorSchemaContribution.PERSON_SEX.removeProperty(m, Visibility.EMPTY);
+
         element = m.save(getAuthorizations());
         getGraph().flush();
 
@@ -91,9 +98,16 @@ public class FaceDetectorWorker extends DataWorker {
             for (FaceDetectorResponse.FaceDetectorFace item : result.faces) {
                 int hash = Objects.hash(item.box.x1, item.box.y1, item.box.x2, item.box.y2, item.score);
                 ArtifactDetectedObject artifact = new ArtifactDetectedObject(
-                        item.box.x1, item.box.y1, item.box.x2, item.box.y2, SchemaConstants.CONCEPT_TYPE_PERSON, "Face Detection"
+                        item.box.x1 / width,
+                        item.box.y1 / height,
+                        item.box.x2 / width,
+                        item.box.y2 / height,
+                        SchemaConstants.CONCEPT_TYPE_PERSON,
+                        "Face Detection"
                 );
                 MediaBcSchema.DETECTED_OBJECT.addPropertyValue(m2,  String.valueOf(hash), artifact, Visibility.EMPTY);
+                FaceDetectorSchemaContribution.PERSON_AGE.setProperty(m, item.age, Visibility.EMPTY);
+                FaceDetectorSchemaContribution.PERSON_SEX.setProperty(m, item.sex, Visibility.EMPTY);
             }
             m2.save(getAuthorizations());
             getGraph().flush();
