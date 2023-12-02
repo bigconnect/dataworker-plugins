@@ -4,6 +4,7 @@ import com.mware.core.model.clientapi.dto.PropertyType;
 import com.mware.core.model.properties.types.BooleanSingleValueBcProperty;
 import com.mware.core.model.properties.types.IntegerSingleValueBcProperty;
 import com.mware.core.model.properties.types.StringSingleValueBcProperty;
+import com.mware.core.model.schema.SchemaConstants;
 import com.mware.core.model.schema.SchemaContribution;
 import com.mware.core.model.schema.SchemaFactory;
 import com.mware.ge.TextIndexHint;
@@ -35,7 +36,7 @@ public class FaceDetectorSchemaContribution implements SchemaContribution {
 
         if (schemaFactory.getProperty(PERSON_AGE.getPropertyName()) == null) {
             schemaFactory.newConceptProperty()
-                    .concepts(schemaFactory.getOrCreateThingConcept())
+                    .concepts(schemaFactory.getConcept(SchemaConstants.CONCEPT_TYPE_PERSON))
                     .name(PERSON_AGE.getPropertyName())
                     .displayName("Varsta")
                     .userVisible(true)
@@ -47,8 +48,8 @@ public class FaceDetectorSchemaContribution implements SchemaContribution {
 
         if (schemaFactory.getProperty(PERSON_SEX.getPropertyName()) == null) {
             schemaFactory.newConceptProperty()
-                    .concepts(schemaFactory.getOrCreateThingConcept())
-                    .name(PERSON_AGE.getPropertyName())
+                    .concepts(schemaFactory.getConcept(SchemaConstants.CONCEPT_TYPE_PERSON))
+                    .name(PERSON_SEX.getPropertyName())
                     .displayName("Sex")
                     .userVisible(true)
                     .searchable(true)

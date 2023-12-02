@@ -106,8 +106,8 @@ public class FaceDetectorWorker extends DataWorker {
                         "Face Detection"
                 );
                 MediaBcSchema.DETECTED_OBJECT.addPropertyValue(m2,  String.valueOf(hash), artifact, Visibility.EMPTY);
-                FaceDetectorSchemaContribution.PERSON_AGE.setProperty(m, item.age, Visibility.EMPTY);
-                FaceDetectorSchemaContribution.PERSON_SEX.setProperty(m, item.sex, Visibility.EMPTY);
+                FaceDetectorSchemaContribution.PERSON_AGE.setProperty(m2, item.age, Visibility.EMPTY);
+                FaceDetectorSchemaContribution.PERSON_SEX.setProperty(m2, item.sex, Visibility.EMPTY);
             }
             m2.save(getAuthorizations());
             getGraph().flush();
