@@ -15,7 +15,9 @@ public class FaceDetectorSchemaContribution implements SchemaContribution {
 
     @Override
     public boolean patchApplied(SchemaFactory schemaFactory) {
-        return schemaFactory.getProperty(DETECT_FACES.getPropertyName()) != null;
+        return schemaFactory.getProperty(DETECT_FACES.getPropertyName()) != null
+                && schemaFactory.getProperty(PERSON_AGE.getPropertyName()) != null
+                && schemaFactory.getProperty(PERSON_SEX.getPropertyName()) != null;
     }
 
     @Override
