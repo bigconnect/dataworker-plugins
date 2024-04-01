@@ -4,6 +4,7 @@ import com.github.pemistahl.lingua.api.IsoCode639_1;
 import com.github.pemistahl.lingua.api.Language;
 import com.github.pemistahl.lingua.api.LanguageDetector;
 import com.github.pemistahl.lingua.api.LanguageDetectorBuilder;
+import static com.github.pemistahl.lingua.api.Language.*;
 
 import java.util.Optional;
 
@@ -12,7 +13,11 @@ public class LanguageDetectorUtil {
 
     public LanguageDetectorUtil() {
         languageDetector = LanguageDetectorBuilder
-                .fromAllSpokenLanguages()
+                .fromLanguages(ROMANIAN, FRENCH, ITALIAN, ENGLISH, RUSSIAN, SPANISH, GERMAN, BULGARIAN, GREEK,
+                        HINDI, CHINESE, INDONESIAN, ALBANIAN, ARABIC, BELARUSIAN, CROATIAN, CZECH, DANISH, DUTCH,
+                        ESTONIAN, FINNISH, HEBREW, HUNGARIAN, JAPANESE, KOREAN, MALAY, POLISH, PORTUGUESE, SERBIAN,
+                        SLOVAK, SWEDISH, THAI, TURKISH, UKRAINIAN, VIETNAMESE)
+                .withPreloadedLanguageModels()
                 .build();
     }
 

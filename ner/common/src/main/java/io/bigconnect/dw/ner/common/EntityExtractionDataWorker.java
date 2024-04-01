@@ -54,6 +54,7 @@ import com.mware.ge.*;
 import com.mware.ge.mutation.ElementMutation;
 import com.mware.ge.query.Compare;
 import com.mware.ge.query.QueryResultsIterable;
+import com.mware.ge.type.GeoPoint;
 import com.mware.ge.values.storable.StreamingPropertyValue;
 import com.mware.ge.values.storable.Values;
 import com.mware.ontology.IgnoredMimeTypes;
@@ -198,8 +199,8 @@ public class EntityExtractionDataWorker extends DataWorker {
             if (resolvedToVertex == null && resolveUnknownEntities) {
                 resolvedToVertex = createResolvedVertex(SchemaConstants.CONCEPT_TYPE_LOCATION, name, outVertex.getVisibility());
                 // Comentat pt ca se rezolva de serviciul de AI, prin pipelines
-                //GeoPoint geoPoint = new GeoPoint(resolvedLocation.getGeoname().getLatitude(), resolvedLocation.getGeoname().getLongitude());
-                //RawObjectSchema.GEOLOCATION_PROPERTY.addPropertyValue(resolvedToVertex, "", geoPoint, resolvedToVertex.getVisibility(), getAuthorizations());
+                GeoPoint geoPoint = new GeoPoint(resolvedLocation.getGeoname().getLatitude(), resolvedLocation.getGeoname().getLongitude());
+                RawObjectSchema.GEOLOCATION_PROPERTY.addPropertyValue(resolvedToVertex, "", geoPoint, resolvedToVertex.getVisibility(), getAuthorizations());
             }
 
             if (resolvedToVertex != null) {
