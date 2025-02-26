@@ -40,4 +40,5 @@ public class S2TConstants {
     public static final String SPEECH_TEMP_DIR_PREFIX = "nvrspeech-";
     public static final String TEMP_VIDEO_NAME = "video.mp4";
     public static final String TEMP_FLAC_NAME = "speech.flac";
+    public static final String TEMP_AUDIO_NAME = "speech.mp3";
 }

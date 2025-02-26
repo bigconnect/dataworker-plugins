@@ -11,4 +11,6 @@ public interface SummaryService {
 
     @GET("rest/ready")
     Call<String> ready();
+    @POST("/v1/nlp/analyze")
+    Call<TextAnalysisResponse> processText(@Body TextAnalysisRequest request);
 }

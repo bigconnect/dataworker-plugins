@@ -15,8 +15,10 @@ import com.mware.ge.Property;
 import com.mware.ge.Visibility;
 import com.mware.ge.mutation.ElementMutation;
 import com.mware.ge.util.Preconditions;
-import com.mware.ge.values.storable.StreamingPropertyValue;
+import com.mware.ge.values.storable.*;
 import com.mware.ontology.IgnoredMimeTypes;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import retrofit2.Response;
@@ -27,15 +29,22 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
-import static io.bigconnect.dw.classification.iptc.intellidockers.IntelliDockersIptcSchemaContribution.IPTC;
-import static io.bigconnect.dw.classification.iptc.intellidockers.IntelliDockersIptcSchemaContribution.IPTC_SCORE;
+import static io.bigconnect.dw.classification.iptc.intellidockers.IntelliDockersIptcSchemaContribution.*;
 
-@Name("IntelliDockers IPTC Extractor")
-@Description("Extracts categories from text using IntelliDockers")
+@Name("Text Analysis Worker")
+@Description("Analyzes text using NLP services")
 public class IntelliDockersIptcExtractorWorker extends DataWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(IntelliDockersIptcExtractorWorker.class);
-    public static final String CONFIG_INTELLIDOCKERS_URL = "iptc.ron.url";
+
+    // Configuration constants
+    public static final String CONFIG_URL = "vllm.url";
+    public static final String CONFIG_API_PATH = "vllm.nlp.path";
+    public static final String CONFIG_API_KEY = "vllm.api.key";
+    public static final String CONFIG_TIMEOUT = "ocr.timeout.seconds";
+    private static final int DEFAULT_TIMEOUT_SECONDS = 30;
 
     private IntelliDockersIptc service;
 
@@ -43,11 +52,40 @@ public class IntelliDockersIptcExtractorWorker extends DataWorker {
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
         super.prepare(workerPrepareData);
 
-        String url = getConfiguration().get(CONFIG_INTELLIDOCKERS_URL, null);
-        Preconditions.checkState(!StringUtils.isEmpty(url), "Please provide the '" + CONFIG_INTELLIDOCKERS_URL + "' config parameter");
+        String baseUrl = getConfiguration().get(CONFIG_URL, null);
+        String apiPath = getConfiguration().get(CONFIG_API_PATH, null);
+        String apiKey = getConfiguration().get(CONFIG_API_KEY, null);
+        int timeoutSeconds;
+        try {
+            timeoutSeconds = Integer.parseInt(getConfiguration().get(CONFIG_TIMEOUT, String.valueOf(DEFAULT_TIMEOUT_SECONDS)));
+        } catch (NumberFormatException e) {
+            LOGGER.warn("Invalid timeout value in configuration, using default: " + DEFAULT_TIMEOUT_SECONDS);
+            timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
+        }
+
+        Preconditions.checkState(!StringUtils.isEmpty(baseUrl),
+                "Please provide the '" + CONFIG_URL + "' config parameter");
+
+        OkHttpClient.Builder clientBuilder = new OkHttpClient.Builder()
+                .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .writeTimeout(timeoutSeconds, TimeUnit.SECONDS);
+
+        // Add API key if configured
+        if (!StringUtils.isEmpty(apiKey)) {
+            clientBuilder.addInterceptor(chain -> {
+                Request original = chain.request();
+                Request request = original.newBuilder()
+                        .header("Authorization", "Bearer " + apiKey)
+                        .method(original.method(), original.body())
+                        .build();
+                return chain.proceed(request);
+            });
+        }
 
         Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl(url)
+                .baseUrl(baseUrl)
+                .client(clientBuilder.build())
                 .addConverterFactory(JacksonConverterFactory.create())
                 .build();
 
@@ -64,9 +102,8 @@ public class IntelliDockersIptcExtractorWorker extends DataWorker {
             return false;
 
         if (property.getName().equals(RawObjectSchema.RAW_LANGUAGE.getPropertyName())) {
-            // do entity extraction only if language is set
             String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
-            return !StringUtils.isEmpty(language) && "ro".equals(language);
+            return !StringUtils.isEmpty(language);
         }
 
         return false;
@@ -75,12 +112,11 @@ public class IntelliDockersIptcExtractorWorker extends DataWorker {
     @Override
     public void execute(InputStream in, DataWorkerData data) throws Exception {
         Element element = refresh(data.getElement());
-        String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(data.getProperty());
         Property textProperty = BcSchema.TEXT.getProperty(element, data.getProperty().getKey());
         StreamingPropertyValue spv = BcSchema.TEXT.getPropertyValue(textProperty);
 
         if (spv == null) {
-            LOGGER.warn("Could not find text property for language: " + language);
+            LOGGER.warn("Could not find text property");
             return;
         }
 
@@ -90,42 +126,49 @@ public class IntelliDockersIptcExtractorWorker extends DataWorker {
         }
 
         try {
-            Response<IptcResponse> response = service.process(new IptcRequest(text, "ron"))
-                    .execute();
+            TextAnalysisRequest request = new TextAnalysisRequest(text, "classify");
+            Response<TextAnalysisResponse> response = service.processText(request).execute();
+
             if (response.isSuccessful() && response.body() != null) {
-                // remove previous values
-                ElementMutation m = element.prepareMutation();
-                for (Property p : IPTC.getProperties(element)) {
-                    m.deleteProperty(p);
+                TextAnalysisResponse result = response.body();
+                ElementMutation<?> m = element.prepareMutation();
+
+                // Handle classification results
+                if (result.classification != null && result.classification.classifications != null) {
+                    // Create a string builder or list to collect all categories
+                    StringBuilder categories = new StringBuilder();
+
+                    // Iterate through classifications and build comma-separated string
+                    for (Classification classification : result.classification.classifications) {
+                        if (categories.length() > 0) {
+                            categories.append(", ");
+                        }
+                        categories.append(classification.category);
+                    }
+
+                    // Add single property value with all categories
+                    if (categories.length() > 0) {
+                        m.addPropertyValue(
+                                data.getProperty().getKey(),
+                                IPTC.getPropertyName(),
+                                Values.stringValue(categories.toString()),
+                                data.getVisibility()
+                        );
+                    }
                 }
-                element = m.save(getAuthorizations());
-                getGraph().flush();
 
-                // set new classes
-                m = element.prepareMutation();
-                List<IptcResponse.IptcCategory> categories = response.body().categories;
-                for (int i = 0; i < categories.size(); i++) {
-                    IptcResponse.IptcCategory category = categories.get(i);
-                    com.mware.ge.Metadata metadata = data.createPropertyMetadata(getUser());
-                    IPTC_SCORE.setMetadata(metadata, category.score, Visibility.EMPTY);
-                    IPTC.addPropertyValue(m, String.valueOf(i), category.label, metadata, Visibility.EMPTY);
+                // Handle topics
+                if (result.topics != null && !result.topics.isEmpty()) {
+                    String[] topicsArray = result.topics.toArray(new String[0]);
+                    m.addPropertyValue(data.getProperty().getKey(), TOPICS.getPropertyName(),
+                            Values.stringArray(topicsArray), data.getVisibility());
                 }
-                Element e = m.save(getAuthorizations());
 
+                m.save(getAuthorizations());
                 getGraph().flush();
-
-                getWorkQueueRepository().pushOnDwQueue(
-                        e,
-                        null,
-                        IPTC.getPropertyName(),
-                        data.getWorkspaceId(),
-                        data.getVisibilitySource(),
-                        data.getPriority(),
-                        ElementOrPropertyStatus.UPDATE,
-                        null);
             }
         } catch (IOException e) {
-            LOGGER.warn("Could not extract categories: %s", e.getMessage());
+            LOGGER.warn("Could not analyze text: %s", e.getMessage());
         }
     }
 }

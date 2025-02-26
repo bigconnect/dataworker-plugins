@@ -26,10 +26,10 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 
-import static io.bigconnect.dw.sentiment.intellidockers.IntelliDockersSentimentExtractorWorker.CONFIG_INTELLIDOCKERS_PARAGRAPHS;
-import static io.bigconnect.dw.sentiment.intellidockers.IntelliDockersSentimentExtractorWorker.CONFIG_INTELLIDOCKERS_URL;
 
 public class IntelliDockersSentimentExtractorWorkerTest extends InMemoryGraphTestBase {
+    private static final String CONFIG_INTELLIDOCKERS_URL = "vllm.url";
+    private static final String CONFIG_INTELLIDOCKERS_PARAGRAPHS = "sentiment.ron.paragraphs";
     Authorizations AUTHS = new Authorizations();
     GenericContainer container;
     String TEXT = "Directorul Termoenergetica, Claudiu Crețu, spune că ar plăti toate datoriile dacă ar avea bani: ”Când plătește Primăria subvenția, plătim și noi”.\n" +

@@ -57,5 +57,11 @@
             <version>1.16.2</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>io.bigconnect</groupId>
+            <artifactId>dw-classification-intellidockers-iptc</artifactId>
+            <version>4.2.2-SNAPSHOT</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
 </project>

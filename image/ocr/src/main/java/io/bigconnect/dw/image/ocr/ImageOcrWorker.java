@@ -18,37 +18,72 @@ import com.mware.ge.util.IOUtils;
 import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.StreamingPropertyValue;
-import okhttp3.MediaType;
-import okhttp3.MultipartBody;
-import okhttp3.RequestBody;
+import okhttp3.*;
 import org.apache.commons.lang3.StringUtils;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
 
 import java.io.InputStream;
+import java.util.concurrent.TimeUnit;
 
 @Name("OCR")
 @Description("Extract text from images")
 public class ImageOcrWorker extends DataWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(ImageOcrWorker.class);
 
-    public static final String CONFIG_URL = "ocr.url";
+    // Configuration constants
+    public static final String CONFIG_URL = "vllm.url";
+    public static final String CONFIG_API_PATH = "vllm.ocr.path";
+    public static final String CONFIG_API_KEY = "vllm.api.key";
+    public static final String CONFIG_TIMEOUT = "ocr.timeout.seconds";
+    private static final int DEFAULT_TIMEOUT_SECONDS = 30;
 
-    ImageOcrService service;
+    private ImageOcrService service;
 
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
         super.prepare(workerPrepareData);
-        String url = getConfiguration().get(CONFIG_URL, null);
-        Preconditions.checkState(!StringUtils.isEmpty(url), "Please provide the '" + CONFIG_URL + "' config parameter");
+        String baseUrl = getConfiguration().get(CONFIG_URL, null);
+        String apiPath = getConfiguration().get(CONFIG_API_PATH, null);
+        String apiKey = getConfiguration().get(CONFIG_API_KEY, null);
+        int timeoutSeconds;
+        try {
+            timeoutSeconds = Integer.parseInt(getConfiguration().get(CONFIG_TIMEOUT, String.valueOf(DEFAULT_TIMEOUT_SECONDS)));
+        } catch (NumberFormatException e) {
+            LOGGER.warn("Invalid timeout value in configuration, using default: " + DEFAULT_TIMEOUT_SECONDS);
+            timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
+        }
+
+        Preconditions.checkState(!StringUtils.isEmpty(baseUrl),
+                "Please provide the '" + CONFIG_URL + "' config parameter");
+
+        OkHttpClient.Builder clientBuilder = new OkHttpClient.Builder()
+                .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .writeTimeout(timeoutSeconds, TimeUnit.SECONDS);
+
+        // Add API key if configured
+        if (!StringUtils.isEmpty(apiKey)) {
+            clientBuilder.addInterceptor(chain -> {
+                Request original = chain.request();
+                Request request = original.newBuilder()
+                        .header("Authorization", "Bearer " + apiKey)
+                        .method(original.method(), original.body())
+                        .build();
+                return chain.proceed(request);
+            });
+        }
+
         Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl(url)
+                .baseUrl(baseUrl)
+                .client(clientBuilder.build())
                 .addConverterFactory(JacksonConverterFactory.create())
                 .build();
 
         service = retrofit.create(ImageOcrService.class);
     }
+
 
     @Override
     public boolean isHandled(Element element, Property property) {
@@ -83,15 +118,13 @@ public class ImageOcrWorker extends DataWorker {
         getGraph().flush();
 
         byte[] imageData = IOUtils.toBytes(spv.getInputStream());
-        MultipartBody.Part filePart = MultipartBody.Part.createFormData(
-                "content", "file",
-                RequestBody.create(MediaType.parse("image/*"), imageData)
-        );
+        RequestBody requestFile = RequestBody.create(MediaType.parse("image/*"), imageData);
+        MultipartBody.Part filePart = MultipartBody.Part.createFormData("file", "file", requestFile);
         Response<ImageOcrResponse> response = service.process(filePart).execute();
         ImageOcrResponse result = response.body();
         if (result != null) {
             ElementMutation<Vertex> m2 = element.prepareMutation();
-            String text = StringUtils.trimToEmpty(result.text);
+            String text = StringUtils.trimToEmpty(result.getResults().getBestCombined());
             String propKey = ""+System.currentTimeMillis();
             BcSchema.TEXT.addPropertyValue(m2, propKey, DefaultStreamingPropertyValue.create(text), data.getVisibility());
             element = m2.save(getAuthorizations());
