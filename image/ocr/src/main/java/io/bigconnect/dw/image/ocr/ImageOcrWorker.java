@@ -33,8 +33,8 @@ public class ImageOcrWorker extends DataWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(ImageOcrWorker.class);
 
     // Configuration constants
-    public static final String CONFIG_URL = "vllm.url";
-    public static final String CONFIG_API_PATH = "vllm.ocr.path";
+    public static final String CONFIG_URL = "ocr.url";
+    public static final String CONFIG_API_PATH = "ocr.path";
     public static final String CONFIG_API_KEY = "vllm.api.key";
     public static final String CONFIG_TIMEOUT = "ocr.timeout.seconds";
     private static final int DEFAULT_TIMEOUT_SECONDS = 30;
