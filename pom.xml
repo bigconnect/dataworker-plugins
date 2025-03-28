@@ -103,10 +103,11 @@
         <module>audio</module>
         <module>image</module>
         <module>text</module>
-        <module>classification</module>
         <module>mime-type</module>
         <module>google-services</module>
         <module>tester</module>
+        <module>classification</module>
+        <module>classification-vllm</module>
     </modules>
 
     <dependencies>

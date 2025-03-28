@@ -1,4 +1,4 @@
-package io.bigconnect.dw.classification.iptc.intellidockers;
+package io.bigconnect.dw.classification.iptc.intellidockersVllm;
 
 import com.mware.core.model.clientapi.dto.PropertyType;
 import com.mware.core.model.properties.types.DoubleMetadataBcProperty;
@@ -11,6 +11,7 @@ import com.mware.ge.TextIndexHint;
 public class IntelliDockersIptcSchemaContribution implements SchemaContribution {
     public static final StringBcProperty IPTC = new StringBcProperty("iptc");
     public static final DoubleMetadataBcProperty IPTC_SCORE = new DoubleMetadataBcProperty("iptc_score");
+    public static final StringBcProperty TOPICS = new StringBcProperty("topics"); // New property for topics
 
     @Override
     public boolean patchApplied(SchemaFactory schemaFactory) {
@@ -27,6 +28,17 @@ public class IntelliDockersIptcSchemaContribution implements SchemaContribution 
                     .userVisible(true)
                     .searchable(true)
                     .type(PropertyType.STRING)
+                    .textIndexHints(TextIndexHint.EXACT_MATCH)
+                    .save();
+        }
+        if (schemaFactory.getProperty(TOPICS.getPropertyName()) == null) {
+            schemaFactory.newConceptProperty()
+                    .concepts(schemaFactory.getOrCreateThingConcept())
+                    .displayName("Topics")
+                    .name(TOPICS.getPropertyName())
+                    .userVisible(true)
+                    .searchable(true)
+                    .type(PropertyType.EXTENDED_DATA_TABLE)
                     .textIndexHints(TextIndexHint.EXACT_MATCH)
                     .save();
         }

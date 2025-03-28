@@ -34,25 +34,56 @@
  * embedding the product in a web application, shipping BigConnect with a
  * closed source product.
  */
-package io.bigconnect.dw.sentiment.intellidockers;
+package io.bigconnect.dw.text.search;
 
-import retrofit2.Call;
-import retrofit2.http.Body;
-import retrofit2.http.GET;
-import retrofit2.http.POST;
+import java.util.List;
+import java.util.UUID;
+import java.time.LocalDateTime;
 
-public interface IntelliDockersSentiment {
-    @POST("rest/process")
-    Call<SentimentResponse> process(@Body SentimentRequest request);
+public class BucketWithSimilarity {
+    private UUID id;
+    private String bucket_name;
+    private LocalDateTime timestamp;
+    private double similarity;
+    private List<String> sample_keywords;
 
-    @GET("rest/ready")
-    Call<String> ready();
+    public UUID getId() {
+        return id;
+    }
 
+    public void setId(UUID id) {
+        this.id = id;
+    }
 
-    @POST("/v1/nlp/analyze")
-    Call<TextAnalysisResponse> processText(@Body TextAnalysisRequest request);
+    public String getBucket_name() {
+        return bucket_name;
+    }
 
-    @POST("/sentiment")
-    Call<SentimentResponse> analyzeSentiment(@Body TextRequest request);
+    public void setBucket_name(String bucket_name) {
+        this.bucket_name = bucket_name;
+    }
 
+    public LocalDateTime getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(LocalDateTime timestamp) {
+        this.timestamp = timestamp;
+    }
+
+    public double getSimilarity() {
+        return similarity;
+    }
+
+    public void setSimilarity(double similarity) {
+        this.similarity = similarity;
+    }
+
+    public List<String> getSample_keywords() {
+        return sample_keywords;
+    }
+
+    public void setSample_keywords(List<String> sample_keywords) {
+        this.sample_keywords = sample_keywords;
+    }
 }

@@ -1,4 +1,4 @@
-package io.bigconnect.dw.classification.iptc.intellidockers;
+package io.bigconnect.dw.classification.iptc.intellidockersVllm;
 
 import java.util.ArrayList;
 import java.util.List;

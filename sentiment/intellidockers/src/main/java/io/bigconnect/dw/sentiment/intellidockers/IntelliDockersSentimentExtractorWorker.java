@@ -27,15 +27,19 @@ import com.mware.ge.values.storable.Values;
 import com.mware.ontology.IgnoredMimeTypes;
 import io.bigconnect.dw.text.common.NerUtils;
 import io.bigconnect.dw.text.common.TextSpan;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
-import retrofit2.Response;
-import retrofit2.Retrofit;
-import retrofit2.converter.jackson.JacksonConverterFactory;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import javax.inject.Inject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -47,21 +51,25 @@ import org.apache.commons.lang3.StringUtils;
 public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(IntelliDockersSentimentExtractorWorker.class);
 
-    public static final String CONFIG_URL = "vllm.url";
+    public static final String CONFIG_URL = "fastapi.api.url";
     public static final String CONFIG_API_KEY = "vllm.api.key";
-    public static final String CONFIG_TIMEOUT = "ocr.timeout.seconds";
+    public static final String CONFIG_TIMEOUT = "sentiment.timeout.seconds";
     public static final String CONFIG_PARAGRAPHS = "sentiment.ron.paragraphs";
 
     private static final int DEFAULT_TIMEOUT_SECONDS = 30;
+    private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 
-    private IntelliDockersSentiment service;
+    private OkHttpClient client;
+    private String apiUrl;
     private boolean doParagraphs;
     private TermMentionRepository termMentionRepository;
     private Timer detectTimer;
+    private ObjectMapper objectMapper;
 
     @Inject
     public IntelliDockersSentimentExtractorWorker(TermMentionRepository termMentionRepository) {
         this.termMentionRepository = termMentionRepository;
+        this.objectMapper = new ObjectMapper();
     }
 
     @Override
@@ -73,6 +81,8 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         int timeoutSeconds = Integer.parseInt(getConfiguration().get(CONFIG_TIMEOUT, String.valueOf(DEFAULT_TIMEOUT_SECONDS)));
 
         Preconditions.checkState(!StringUtils.isEmpty(baseUrl), "Please provide the '" + CONFIG_URL + "' config parameter");
+
+        this.apiUrl = baseUrl + "/sentiment";
 
         OkHttpClient.Builder clientBuilder = new OkHttpClient.Builder()
                 .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
@@ -87,13 +97,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
             ));
         }
 
-        Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl(baseUrl)
-                .client(clientBuilder.build())
-                .addConverterFactory(JacksonConverterFactory.create())
-                .build();
-
-        service = retrofit.create(IntelliDockersSentiment.class);
+        this.client = clientBuilder.build();
         this.doParagraphs = getConfiguration().getBoolean(CONFIG_PARAGRAPHS, false);
         this.detectTimer = getGraph().getMetricsRegistry().getTimer(getClass(), "sentiment-time");
     }
@@ -102,6 +106,13 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     public boolean isHandled(Element element, Property property) {
         if (property == null) return false;
         if (IgnoredMimeTypes.contains(BcSchema.MIME_TYPE.getFirstPropertyValue(element))) return false;
+
+        // Check if sentiment property already exists - don't process if it does
+        Property sentimentProperty = element.getProperty(RawObjectSchema.RAW_SENTIMENT.getPropertyName());
+        if (sentimentProperty != null) {
+            LOGGER.debug("Sentiment property already exists for element: {}, skipping", element.getId());
+            return false;
+        }
 
         if (property.getName().equals(RawObjectSchema.RAW_LANGUAGE.getPropertyName())) {
             String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
@@ -144,28 +155,41 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     private void processSingleText(String text, DataWorkerData data) throws Exception {
         PausableTimerContext timer = new PausableTimerContext(detectTimer);
         try {
-            String language = RawObjectSchema.RAW_LANGUAGE.getFirstPropertyValue(data.getElement());
-            TextAnalysisRequest request = new TextAnalysisRequest(text, "sentiment", language);
-            Response<TextAnalysisResponse> response = service.processText(request).execute();
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("text", text);
+            requestBody.put("dev", false);
 
-            if (response.isSuccessful() && response.body() != null && response.body().sentiment != null) {
-                Vertex vertex = (Vertex)refresh(data.getElement());
-                String propertyName = RawObjectSchema.RAW_SENTIMENT.getPropertyName();
+            String jsonRequest = objectMapper.writeValueAsString(requestBody);
+            RequestBody body = RequestBody.create(JSON, jsonRequest);
 
-                // Remove existing property before setting new value
-                vertex.getProperties(propertyName).forEach(p ->
-                        vertex.softDeleteProperty(p.getKey(), propertyName, p.getVisibility(), getAuthorizations())
-                );
+            Request request = new Request.Builder()
+                    .url(apiUrl)
+                    .post(body)
+                    .build();
 
-                String sentiment = extractSentiment(response.body().sentiment);
-                vertex.addPropertyValue(data.getProperty().getKey(), propertyName,
-                        Values.stringValue(sentiment),
-                        data.createPropertyMetadata(getUser()),
-                        data.getVisibility(),
-                        getAuthorizations());
+            try (Response response = client.newCall(request).execute()) {
+                if (response.isSuccessful() && response.body() != null) {
+                    String responseJson = response.body().string();
+                    Map<String, Object> responseMap = objectMapper.readValue(responseJson, Map.class);
+                    String sentiment = (String) responseMap.get("sentiment");
 
-                getGraph().flush();
-                pushWorkQueueUpdate(data);
+                    Vertex vertex = (Vertex)refresh(data.getElement());
+                    String propertyName = RawObjectSchema.RAW_SENTIMENT.getPropertyName();
+
+                    // Remove existing property before setting new value
+                    vertex.getProperties(propertyName).forEach(p ->
+                            vertex.softDeleteProperty(p.getKey(), propertyName, p.getVisibility(), getAuthorizations())
+                    );
+
+                    vertex.addPropertyValue(data.getProperty().getKey(), propertyName,
+                            Values.stringValue(sentiment.toLowerCase()),
+                            data.createPropertyMetadata(getUser()),
+                            data.getVisibility(),
+                            getAuthorizations());
+
+                    getGraph().flush();
+                    pushWorkQueueUpdate(data);
+                }
             }
         } finally {
             timer.close();
@@ -174,7 +198,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
 
     private void processParagraphs(String text, DataWorkerData data, Property textProperty) throws IOException {
         NerUtils.removeSentimentTermMentions((Vertex)refresh(data.getElement()), termMentionRepository, getGraph(), getAuthorizations());
-        List<TextSpan> paragraphs = NerUtils.getParagraphs(text);
+        List<TextSpan> paragraphs = NerUtils.getSmartMiniLMChunks(text);
 
         VisibilityJson tmVisibilityJson = new VisibilityJson();
         tmVisibilityJson.setSource("");
@@ -184,38 +208,49 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         int neutralCount = 0;
 
         for (TextSpan p : paragraphs) {
-            String language = RawObjectSchema.RAW_LANGUAGE.getFirstPropertyValue(data.getElement());
-            TextAnalysisRequest request = new TextAnalysisRequest(p.getText(), "sentiment", language);
-            Response<TextAnalysisResponse> response = service.processText(request).execute();
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("text", p.getText());
+            requestBody.put("dev", false);
 
-            if (response.isSuccessful() && response.body() != null && response.body().sentiment != null) {
-                Map<String, Object> sentimentResult = response.body().sentiment;
-                String sentiment = extractSentiment(sentimentResult);
-                double score = extractScore(sentimentResult);
+            String jsonRequest = objectMapper.writeValueAsString(requestBody);
+            RequestBody body = RequestBody.create(JSON, jsonRequest);
 
-                TermMentionBuilder tmb = new TermMentionBuilder()
-                        .outVertex((Vertex)refresh(data.getElement()))
-                        .propertyKey(textProperty.getKey())
-                        .propertyName(textProperty.getName())
-                        .start(p.getStart())
-                        .end(p.getEnd())
-                        .title(String.format("%s: %f", StringUtils.capitalize(sentiment), score))
-                        .score(score)
-                        .type("sent")
-                        .visibilityJson(tmVisibilityJson)
-                        .process(getClass().getName());
+            Request request = new Request.Builder()
+                    .url(apiUrl)
+                    .post(body)
+                    .build();
 
-                if ("positive".equals(sentiment)) {
-                    tmb.style(String.format("background-color: rgba(0, 255, 0, %f);", score / 3));
-                    positiveCount++;
-                } else if ("negative".equals(sentiment)) {
-                    tmb.style(String.format("background-color: rgba(255, 0, 0, %f);", score / 3));
-                    negativeCount++;
-                } else {
-                    neutralCount++;
+            try (Response response = client.newCall(request).execute()) {
+                if (response.isSuccessful() && response.body() != null) {
+                    String responseJson = response.body().string();
+                    Map<String, Object> responseMap = objectMapper.readValue(responseJson, Map.class);
+                    String sentiment = ((String) responseMap.get("sentiment")).toLowerCase();
+                    double score = 1.0; // Default score since the API doesn't provide scores
+
+                    TermMentionBuilder tmb = new TermMentionBuilder()
+                            .outVertex((Vertex)refresh(data.getElement()))
+                            .propertyKey(textProperty.getKey())
+                            .propertyName(textProperty.getName())
+                            .start(p.getStart())
+                            .end(p.getEnd())
+                            .title(String.format("%s", StringUtils.capitalize(sentiment)))
+                            .score(score)
+                            .type("sent")
+                            .visibilityJson(tmVisibilityJson)
+                            .process(getClass().getName());
+
+                    if ("positive".equals(sentiment)) {
+                        tmb.style("background-color: rgba(0, 255, 0, 0.3);");
+                        positiveCount++;
+                    } else if ("negative".equals(sentiment)) {
+                        tmb.style("background-color: rgba(255, 0, 0, 0.3);");
+                        negativeCount++;
+                    } else {
+                        neutralCount++;
+                    }
+
+                    tmb.save(getGraph(), getVisibilityTranslator(), getUser(), getAuthorizations());
                 }
-
-                tmb.save(getGraph(), getVisibilityTranslator(), getUser(), getAuthorizations());
             }
         }
 
@@ -229,44 +264,6 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         getGraph().flush();
 
         pushWorkQueueUpdate(data);
-    }
-
-    private String extractSentiment(Map<String, Object> sentimentResult) {
-        if (sentimentResult == null) return "neutral";
-
-        try {
-            Map<String, Double> scores = (Map<String, Double>) sentimentResult.get("scores");
-            if (scores == null) return "neutral";
-
-            double positive = scores.getOrDefault("positive", 0.0);
-            double negative = scores.getOrDefault("negative", 0.0);
-            double neutral = scores.getOrDefault("neutral", 0.0);
-
-            if (positive > negative && positive > neutral) return "positive";
-            if (negative > positive && negative > neutral) return "negative";
-            return "neutral";
-        } catch (Exception e) {
-            LOGGER.warn("Error extracting sentiment", e);
-            return "neutral";
-        }
-    }
-
-    private double extractScore(Map<String, Object> sentimentResult) {
-        try {
-            Map<String, Double> scores = (Map<String, Double>) sentimentResult.get("scores");
-            if (scores == null) return 0.0;
-
-            return Math.max(
-                    Math.max(
-                            scores.getOrDefault("positive", 0.0),
-                            scores.getOrDefault("negative", 0.0)
-                    ),
-                    scores.getOrDefault("neutral", 0.0)
-            );
-        } catch (Exception e) {
-            LOGGER.warn("Error extracting score", e);
-            return 0.0;
-        }
     }
 
     private String calculateOverallSentiment(int positive, int negative, int neutral) {

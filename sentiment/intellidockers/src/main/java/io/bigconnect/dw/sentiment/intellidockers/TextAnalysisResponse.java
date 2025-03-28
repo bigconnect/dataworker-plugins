@@ -1,5 +1,8 @@
 package io.bigconnect.dw.sentiment.intellidockers;
 
+
+import io.bigconnect.dw.classification.iptc.intellidockersVllm.ClassificationResult;
+
 import java.util.List;
 import java.util.Map;
 

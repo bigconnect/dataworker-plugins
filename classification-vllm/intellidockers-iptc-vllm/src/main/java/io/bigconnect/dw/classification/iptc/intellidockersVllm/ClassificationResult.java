@@ -1,4 +1,5 @@
-package io.bigconnect.dw.sentiment.intellidockers;
+package io.bigconnect.dw.classification.iptc.intellidockersVllm;
+
 
 import java.util.List;
 

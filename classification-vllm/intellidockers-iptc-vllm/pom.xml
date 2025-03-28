@@ -4,13 +4,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <groupId>io.bigconnect</groupId>
-        <artifactId>dw-sentiment</artifactId>
+        <artifactId>dw-classification-vllm</artifactId>
         <version>4.2.2-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>dw-sentiment-intellidockers</artifactId>
-    <name>BigConnect: DataWorker: Intellidockers Sentiment</name>
+    <artifactId>dw-classification-intellidockers-iptc-vllm</artifactId>
+    <name>BigConnect: DataWorker: Classification: IntelliDockers IPTC</name>
     <packaging>jar</packaging>
 
     <dependencies>
@@ -34,34 +34,6 @@
                     <artifactId>jackson-databind</artifactId>
                 </exclusion>
             </exclusions>
-        </dependency>
-
-        <!-- testing -->
-        <dependency>
-            <groupId>io.bigconnect</groupId>
-            <artifactId>test</artifactId>
-            <version>${bigconnect.version}</version>
-            <type>test-jar</type>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.bigconnect</groupId>
-            <artifactId>core</artifactId>
-            <type>test-jar</type>
-            <version>${bigconnect.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>testcontainers</artifactId>
-            <version>1.16.2</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.bigconnect</groupId>
-            <artifactId>dw-classification-intellidockers-iptc-vllm</artifactId>
-            <version>4.2.2-SNAPSHOT</version>
-            <scope>compile</scope>
         </dependency>
     </dependencies>
 </project>

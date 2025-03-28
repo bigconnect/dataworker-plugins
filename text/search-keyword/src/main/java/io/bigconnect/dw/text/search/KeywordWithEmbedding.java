@@ -34,25 +34,55 @@
  * embedding the product in a web application, shipping BigConnect with a
  * closed source product.
  */
-package io.bigconnect.dw.sentiment.intellidockers;
+package io.bigconnect.dw.text.search;
 
-import retrofit2.Call;
-import retrofit2.http.Body;
-import retrofit2.http.GET;
-import retrofit2.http.POST;
+import java.util.UUID;
+import java.time.LocalDateTime;
 
-public interface IntelliDockersSentiment {
-    @POST("rest/process")
-    Call<SentimentResponse> process(@Body SentimentRequest request);
+public class KeywordWithEmbedding {
+    private UUID id;
+    private String keyword;
+    private UUID bucket_id;
+    private LocalDateTime timestamp;
+    private double similarity;
 
-    @GET("rest/ready")
-    Call<String> ready();
+    public UUID getId() {
+        return id;
+    }
 
+    public void setId(UUID id) {
+        this.id = id;
+    }
 
-    @POST("/v1/nlp/analyze")
-    Call<TextAnalysisResponse> processText(@Body TextAnalysisRequest request);
+    public String getKeyword() {
+        return keyword;
+    }
 
-    @POST("/sentiment")
-    Call<SentimentResponse> analyzeSentiment(@Body TextRequest request);
+    public void setKeyword(String keyword) {
+        this.keyword = keyword;
+    }
 
+    public UUID getBucket_id() {
+        return bucket_id;
+    }
+
+    public void setBucket_id(UUID bucket_id) {
+        this.bucket_id = bucket_id;
+    }
+
+    public LocalDateTime getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(LocalDateTime timestamp) {
+        this.timestamp = timestamp;
+    }
+
+    public double getSimilarity() {
+        return similarity;
+    }
+
+    public void setSimilarity(double similarity) {
+        this.similarity = similarity;
+    }
 }

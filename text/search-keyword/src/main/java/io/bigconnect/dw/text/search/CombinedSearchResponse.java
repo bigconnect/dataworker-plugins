@@ -34,25 +34,27 @@
  * embedding the product in a web application, shipping BigConnect with a
  * closed source product.
  */
-package io.bigconnect.dw.sentiment.intellidockers;
+package io.bigconnect.dw.text.search;
 
-import retrofit2.Call;
-import retrofit2.http.Body;
-import retrofit2.http.GET;
-import retrofit2.http.POST;
+import java.util.List;
 
-public interface IntelliDockersSentiment {
-    @POST("rest/process")
-    Call<SentimentResponse> process(@Body SentimentRequest request);
+public class CombinedSearchResponse {
+    private List<KeywordWithEmbedding> similar_keywords;
+    private List<BucketWithSimilarity> similar_buckets;
 
-    @GET("rest/ready")
-    Call<String> ready();
+    public List<KeywordWithEmbedding> getSimilar_keywords() {
+        return similar_keywords;
+    }
 
+    public void setSimilar_keywords(List<KeywordWithEmbedding> similar_keywords) {
+        this.similar_keywords = similar_keywords;
+    }
 
-    @POST("/v1/nlp/analyze")
-    Call<TextAnalysisResponse> processText(@Body TextAnalysisRequest request);
+    public List<BucketWithSimilarity> getSimilar_buckets() {
+        return similar_buckets;
+    }
 
-    @POST("/sentiment")
-    Call<SentimentResponse> analyzeSentiment(@Body TextRequest request);
-
+    public void setSimilar_buckets(List<BucketWithSimilarity> similar_buckets) {
+        this.similar_buckets = similar_buckets;
+    }
 }

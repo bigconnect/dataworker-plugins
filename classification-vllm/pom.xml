@@ -9,17 +9,12 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>dw-text</artifactId>
-    <name>BigConnect: DataWorker: Text: Parent</name>
+    <artifactId>dw-classification-vllm</artifactId>
+    <name>BigConnect: DataWorker: Classification: Parent</name>
     <packaging>pom</packaging>
 
     <modules>
-        <module>common</module>
-        <module>language-detector</module>
-        <module>summary</module>
-        <module>text-extractor</module>
-        <module>search-keyword</module>
-        <module>zero-shot-classification</module>
+        <module>intellidockers-iptc-vllm</module>
     </modules>
 
     <dependencies>

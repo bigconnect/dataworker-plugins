@@ -124,4 +124,160 @@ public class NerUtils {
 
         return result;
     }
+
+    /**
+     * Splits text into chunks optimized for all-MiniLM-L6-v2 model while
+     * respecting natural language boundaries like sentences and named entities
+     * @param text The original text
+     * @return List of TextSpan objects with model-friendly chunks
+     */
+    public static List<TextSpan> getSmartMiniLMChunks(String text) {
+        // all-MiniLM-L6-v2 has 256 token limit
+        // Conservative estimate of ~3 chars per token
+        int maxChars = 256 * 3;
+
+        List<TextSpan> chunks = new ArrayList<>();
+
+        // Normalize the text - replace line breaks with spaces to create continuous text
+        String normalizedText = text.replaceAll("\\r?\\n", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (normalizedText.isEmpty()) {
+            return chunks;
+        }
+
+        // If the text is already short enough, return it as a single chunk
+        if (normalizedText.length() <= maxChars) {
+            chunks.add(new TextSpan(0, text.length(), normalizedText));
+            return chunks;
+        }
+
+        // First, split into sentences
+        List<TextSpan> sentences = new ArrayList<>();
+        Pattern sentencePattern = Pattern.compile("(.*?[.!?])(\\s|$)");
+        Matcher sentenceMatcher = sentencePattern.matcher(normalizedText);
+
+        int lastEnd = 0;
+        while (sentenceMatcher.find()) {
+            String sentence = sentenceMatcher.group(1);
+            int start = sentenceMatcher.start();
+            int end = sentenceMatcher.end();
+            sentences.add(new TextSpan(start, end, sentence + (end < normalizedText.length() ? " " : "")));
+            lastEnd = end;
+        }
+
+        // Handle any trailing text without punctuation
+        if (lastEnd < normalizedText.length()) {
+            sentences.add(new TextSpan(lastEnd, normalizedText.length(),
+                    normalizedText.substring(lastEnd)));
+        }
+
+        // Identify potential named entities to avoid splitting them
+        // Simple pattern for common entity markers (could be enhanced with a real NER model)
+        Pattern entityPattern = Pattern.compile("([A-Z][a-z]+(\\s[A-Z][a-z]+)+)");
+        List<TextSpan> entities = new ArrayList<>();
+
+        for (TextSpan sentence : sentences) {
+            Matcher entityMatcher = entityPattern.matcher(sentence.getText());
+            while (entityMatcher.find()) {
+                int entityStart = sentence.getStart() + entityMatcher.start();
+                int entityEnd = sentence.getStart() + entityMatcher.end();
+                entities.add(new TextSpan(entityStart, entityEnd, entityMatcher.group(1)));
+            }
+        }
+
+        // Now combine sentences into chunks respecting entity boundaries
+        StringBuilder currentChunk = new StringBuilder();
+        int chunkStart = 0;
+
+        for (TextSpan sentence : sentences) {
+            // If adding this sentence would exceed max length, finalize current chunk
+            if (currentChunk.length() + sentence.getText().length() > maxChars && currentChunk.length() > 0) {
+                chunks.add(new TextSpan(chunkStart, chunkStart + currentChunk.length(),
+                        currentChunk.toString().trim()));
+                currentChunk = new StringBuilder();
+                chunkStart = sentence.getStart();
+            }
+
+            // Handle very long sentences that exceed max length on their own
+            if (sentence.getText().length() > maxChars) {
+                // If we have content in the current chunk, finalize it
+                if (currentChunk.length() > 0) {
+                    chunks.add(new TextSpan(chunkStart, chunkStart + currentChunk.length(),
+                            currentChunk.toString().trim()));
+                    currentChunk = new StringBuilder();
+                }
+
+                // Split the long sentence into multiple chunks, respecting entity boundaries
+                String longSentence = sentence.getText();
+                int sentenceStart = sentence.getStart();
+                int chunkEnd = 0;
+
+                for (int i = 0; i < longSentence.length(); i = chunkEnd) {
+                    // Determine where to end this chunk
+                    chunkEnd = Math.min(i + maxChars, longSentence.length());
+
+                    // Don't break in the middle of a word
+                    if (chunkEnd < longSentence.length()) {
+                        int lastSpace = longSentence.lastIndexOf(' ', chunkEnd);
+                        if (lastSpace > i) {
+                            chunkEnd = lastSpace + 1;
+                        }
+                    }
+
+                    // Check if we'd be breaking in the middle of a named entity
+                    boolean breakingEntity = false;
+                    for (TextSpan entity : entities) {
+                        if (sentenceStart + chunkEnd > entity.getStart() &&
+                                sentenceStart + chunkEnd < entity.getEnd()) {
+                            // We'd break this entity, adjust to the entity's start
+                            chunkEnd = entity.getStart() - sentenceStart;
+                            if (chunkEnd <= i) {
+                                // Entity starts before or at our current position,
+                                // so include the whole entity
+                                chunkEnd = entity.getEnd() - sentenceStart;
+                                if (chunkEnd - i > maxChars) {
+                                    // Entity is too long, just break at a word boundary
+                                    chunkEnd = Math.min(i + maxChars, longSentence.length());
+                                    int lastSpace = longSentence.lastIndexOf(' ', chunkEnd);
+                                    if (lastSpace > i) {
+                                        chunkEnd = lastSpace + 1;
+                                    }
+                                }
+                            }
+                            breakingEntity = true;
+                            break;
+                        }
+                    }
+
+                    // Create the chunk
+                    String subSentence = longSentence.substring(i, chunkEnd).trim();
+                    if (!subSentence.isEmpty()) {
+                        chunks.add(new TextSpan(sentenceStart + i, sentenceStart + chunkEnd, subSentence));
+                    }
+                }
+
+                continue;
+            }
+
+            // Start new chunk if needed
+            if (currentChunk.length() == 0) {
+                chunkStart = sentence.getStart();
+            }
+
+            // Add sentence to current chunk
+            currentChunk.append(sentence.getText());
+        }
+
+        // Add any remaining text as the final chunk
+        if (currentChunk.length() > 0) {
+            chunks.add(new TextSpan(chunkStart, chunkStart + currentChunk.length(),
+                    currentChunk.toString().trim()));
+        }
+
+        return chunks;
+    }
+
+
 }

@@ -1,5 +1,4 @@
-package io.bigconnect.dw.classification.iptc.intellidockers;
-
+package io.bigconnect.dw.classification.iptc.intellidockersVllm;
 import retrofit2.Call;
 import retrofit2.http.Body;
 import retrofit2.http.POST;
@@ -7,4 +6,7 @@ import retrofit2.http.POST;
 public interface IntelliDockersIptc {
     @POST("rest/process")
     Call<IptcResponse> process(@Body IptcRequest request);
+
+    @POST("/v1/nlp/analyze")
+    Call<TextAnalysisResponse> processText(@Body TextAnalysisRequest request);
 }
