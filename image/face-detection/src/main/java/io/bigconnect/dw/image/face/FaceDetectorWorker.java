@@ -133,8 +133,6 @@ public class FaceDetectorWorker extends DataWorker {
             FaceDetectorSchemaContribution.PERSON_SEX.removeProperty(m, Visibility.EMPTY);
 
             RequestBody faceDetectBody = RequestBody.create(MediaType.parse("image/jpeg"), imageData);
-
-
             Response<FaceDetectorResponse> response = faceService.process(faceDetectBody).execute();
             FaceDetectorResponse result = response.body();
             Map<String, ArtifactDetectedObject> detectedFaces = new HashMap<>();
@@ -240,67 +238,67 @@ public class FaceDetectorWorker extends DataWorker {
                 RecognitionResponse result = response.body();
 
                 if (result.result != null && !result.result.isEmpty()) {
-                    RecognitionResponse.Result faceResult = result.result.get(0);
+                    //RecognitionResponse.Result faceResult = result.result.get(0);
+                    for(RecognitionResponse.Result faceResult: result.result)
+                        if (faceResult.subjects != null && !faceResult.subjects.isEmpty()) {
+                            RecognitionResponse.Result.Subject bestMatch = faceResult.subjects.get(0);
 
-                    if (faceResult.subjects != null && !faceResult.subjects.isEmpty()) {
-                        RecognitionResponse.Result.Subject bestMatch = faceResult.subjects.get(0);
+                            if (bestMatch.similarity >= confidenceThreshold) {
+                                String matchedPersonName = bestMatch.subject;
+                                Vertex personVertex = findPersonByName(matchedPersonName);
 
-                        if (bestMatch.similarity >= confidenceThreshold) {
-                            String matchedPersonName = bestMatch.subject;
-                            Vertex personVertex = findPersonByName(matchedPersonName);
+                                if (personVertex != null) {
+                                    // Create entityHasImageRaw relationship (from old version)
+                                    String entityHasImageEdgeLabel = "entityHasImageRaw";
+                                    String entityHasImageEdgeId = String.format("%s_%s_entityHasImageRaw",
+                                            personVertex.getId(), imageElement.getId());
 
-                            if (personVertex != null) {
-                                // Create entityHasImageRaw relationship (from old version)
-                                String entityHasImageEdgeLabel = "entityHasImageRaw";
-                                String entityHasImageEdgeId = String.format("%s_%s_entityHasImageRaw",
-                                        personVertex.getId(), imageElement.getId());
+                                    getGraph().addEdge(entityHasImageEdgeId,
+                                            personVertex,
+                                            (Vertex) imageElement,
+                                            entityHasImageEdgeLabel,
+                                            Visibility.EMPTY,
+                                            getAuthorizations());
 
-                                getGraph().addEdge(entityHasImageEdgeId,
-                                        personVertex,
-                                        (Vertex) imageElement,
-                                        entityHasImageEdgeLabel,
-                                        Visibility.EMPTY,
-                                        getAuthorizations());
+                                    LOGGER.info("Created entityHasImageRaw relationship between person {} and image",
+                                            matchedPersonName);
 
-                                LOGGER.info("Created entityHasImageRaw relationship between person {} and image",
-                                        matchedPersonName);
+                                    // Create rawContainsImageOfEntity relationships (from new version)
+                                    Iterable<Property> detectedObjects = MediaBcSchema.DETECTED_OBJECT.getProperties(imageElement);
 
-                                // Create rawContainsImageOfEntity relationships (from new version)
-                                Iterable<Property> detectedObjects = MediaBcSchema.DETECTED_OBJECT.getProperties(imageElement);
+                                    for (Property detectedObject : detectedObjects) {
+                                        String containsImageEdgeLabel = "rawContainsImageOfEntity";
+                                        String containsImageEdgeId = String.format("%s_%s_%s",
+                                                imageElement.getId(),
+                                                detectedObject.getKey(),
+                                                personVertex.getId());
 
-                                for (Property detectedObject : detectedObjects) {
-                                    String containsImageEdgeLabel = "rawContainsImageOfEntity";
-                                    String containsImageEdgeId = String.format("%s_%s_%s",
-                                            imageElement.getId(),
-                                            detectedObject.getKey(),
-                                            personVertex.getId());
+                                        getGraph().addEdge(containsImageEdgeId,
+                                                        (Vertex) imageElement,
+                                                        personVertex,
+                                                        containsImageEdgeLabel,
+                                                        Visibility.EMPTY,
+                                                        getAuthorizations())
+                                                .setProperty("detectedObjectKey",
+                                                        Values.stringValue(detectedObject.getName()),
+                                                        Visibility.EMPTY,
+                                                        getAuthorizations());
 
-                                    getGraph().addEdge(containsImageEdgeId,
-                                                    (Vertex) imageElement,
-                                                    personVertex,
-                                                    containsImageEdgeLabel,
-                                                    Visibility.EMPTY,
-                                                    getAuthorizations())
-                                            .setProperty("detectedObjectKey",
-                                                    Values.stringValue(detectedObject.getName()),
-                                                    Visibility.EMPTY,
-                                                    getAuthorizations());
+                                        LOGGER.info("Created rawContainsImageOfEntity relationship between detected face and person {} with key {}",
+                                                matchedPersonName, detectedObject.getKey());
+                                    }
 
-                                    LOGGER.info("Created rawContainsImageOfEntity relationship between detected face and person {} with key {}",
-                                            matchedPersonName, detectedObject.getKey());
+                                    // Update image title
+                                    ElementMutation<Element> mutation = imageElement.prepareMutation();
+                                    BcSchema.TITLE.addPropertyValue(mutation, "title", matchedPersonName, Visibility.EMPTY);
+                                    mutation.save(getAuthorizations());
+
+                                    getGraph().flush();
+                                } else {
+                                    LOGGER.warn("Matched person {} not found in graph", matchedPersonName);
                                 }
-
-                                // Update image title
-                                ElementMutation<Element> mutation = imageElement.prepareMutation();
-                                BcSchema.TITLE.addPropertyValue(mutation, "title", matchedPersonName, Visibility.EMPTY);
-                                mutation.save(getAuthorizations());
-
-                                getGraph().flush();
-                            } else {
-                                LOGGER.warn("Matched person {} not found in graph", matchedPersonName);
                             }
                         }
-                    }
                 }
             }
         } catch (Exception e) {
