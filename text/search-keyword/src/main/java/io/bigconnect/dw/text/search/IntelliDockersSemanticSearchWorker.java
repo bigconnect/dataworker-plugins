@@ -143,13 +143,13 @@ public class IntelliDockersSemanticSearchWorker extends DataWorker {
         }
 
         try {
-            callSemanticSearchAPI(query, data, keyword);
+            callSemanticSearchAPI(query, data);
         } catch (IOException e) {
             LOGGER.warn("Could not perform semantic search: %s", e.getMessage());
         }
     }
 
-    private void callSemanticSearchAPI(String query, DataWorkerData data, String serpKeyword) throws Exception {
+    private void callSemanticSearchAPI(String query, DataWorkerData data) throws Exception {
         PausableTimerContext timer = new PausableTimerContext(searchTimer);
         try {
             Map<String, Object> requestBody = new HashMap<>();
@@ -158,7 +158,6 @@ public class IntelliDockersSemanticSearchWorker extends DataWorker {
             requestBody.put("threshold", 0.3);
             requestBody.put("search_keywords", true);
             requestBody.put("search_buckets", true);
-            requestBody.put("keyword", serpKeyword);
 
             String jsonRequest = objectMapper.writeValueAsString(requestBody);
             RequestBody body = RequestBody.create(MediaType.parse("application/json"), jsonRequest);
