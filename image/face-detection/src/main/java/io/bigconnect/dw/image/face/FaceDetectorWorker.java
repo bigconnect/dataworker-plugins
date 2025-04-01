@@ -239,6 +239,7 @@ public class FaceDetectorWorker extends DataWorker {
 
                 if (result.result != null && !result.result.isEmpty()) {
                     //RecognitionResponse.Result faceResult = result.result.get(0);
+
                     for(RecognitionResponse.Result faceResult: result.result)
                         if (faceResult.subjects != null && !faceResult.subjects.isEmpty()) {
                             RecognitionResponse.Result.Subject bestMatch = faceResult.subjects.get(0);
