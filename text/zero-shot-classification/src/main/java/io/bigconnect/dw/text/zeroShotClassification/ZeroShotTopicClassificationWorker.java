@@ -306,37 +306,47 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
                                         String classification = result.get("overall_classification").asText();
                                         LOGGER.debug("Result " + i + " has overall_classification: " + classification);
 
-                                        // Save using index+1 (1-based for property names)
-                                        String propertyName = getClassificationPropertyName(i + 1);
-                                        LOGGER.debug("Setting property " + propertyName + ": " + classification);
+                                        // Only save non-empty classifications
+                                        if (StringUtils.isNotBlank(classification)) {
+                                            // Save using index+1 (1-based for property names)
+                                            String propertyName = getClassificationPropertyName(i + 1);
+                                            LOGGER.debug("Setting property " + propertyName + ": " + classification);
 
-                                        m.setProperty(propertyName,
-                                                Values.stringValue(classification),
-                                                data.createPropertyMetadata(getUser()),
-                                                data.getVisibility());
-                                        savedCount++;
+                                            m.setProperty(propertyName,
+                                                    Values.stringValue(classification),
+                                                    data.createPropertyMetadata(getUser()),
+                                                    data.getVisibility());
+                                            savedCount++;
+                                        } else {
+                                            LOGGER.warn("Result " + i + " has empty classification value, skipping");
+                                        }
                                     } else {
                                         LOGGER.warn("Result " + i + " missing overall_classification field");
                                     }
                                 }
 
-                                LOGGER.info("Saving mutation with " + savedCount + " classification properties");
-                                try {
-                                    m.save(getAuthorizations());
-                                    LOGGER.info("Mutation saved successfully");
-                                } catch (Exception e) {
-                                    LOGGER.error("Error saving mutation", e);
-                                }
+                                // Only save if we have at least one valid classification
+                                if (savedCount > 0) {
+                                    LOGGER.info("Saving mutation with " + savedCount + " classification properties");
+                                    try {
+                                        m.save(getAuthorizations());
+                                        LOGGER.info("Mutation saved successfully");
+                                    } catch (Exception e) {
+                                        LOGGER.error("Error saving mutation", e);
+                                    }
 
-                                try {
-                                    getGraph().flush();
-                                    LOGGER.info("Graph flushed successfully");
-                                } catch (Exception e) {
-                                    LOGGER.error("Error flushing graph", e);
-                                }
+                                    try {
+                                        getGraph().flush();
+                                        LOGGER.info("Graph flushed successfully");
+                                    } catch (Exception e) {
+                                        LOGGER.error("Error flushing graph", e);
+                                    }
 
-                                pushWorkQueueUpdate(data);
-                                LOGGER.info("Work queue updates pushed");
+                                    pushWorkQueueUpdate(data);
+                                    LOGGER.info("Work queue updates pushed");
+                                } else {
+                                    LOGGER.warn("No valid classification results found, not saving anything");
+                                }
                             } else {
                                 LOGGER.warn("classification_results is not an array: " + classificationResults);
                             }

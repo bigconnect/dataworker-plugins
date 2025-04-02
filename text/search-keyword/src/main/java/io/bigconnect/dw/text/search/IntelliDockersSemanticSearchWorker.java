@@ -124,7 +124,6 @@ public class IntelliDockersSemanticSearchWorker extends DataWorker {
         String query = null;
         String keyword = null;
 
-        // Try to get serpKeyword first
         Property serpKeywordProperty = RawObjectSchema.SERP_KEYWORD.getProperty(refresh(data.getElement()));
         if (serpKeywordProperty != null) {
             keyword = RawObjectSchema.SERP_KEYWORD.getPropertyValue(serpKeywordProperty);
@@ -179,53 +178,66 @@ public class IntelliDockersSemanticSearchWorker extends DataWorker {
                     String responseJson = response.body().string();
                     Map<String, Object> responseMap = objectMapper.readValue(responseJson, Map.class);
 
-                    // Extract the lists from the response
                     Vertex vertex = (Vertex) refresh(data.getElement());
                     ElementMutation<Vertex> m = vertex.prepareMutation();
 
                     StringBuilder keywordsText = new StringBuilder();
+                    boolean hasKeywords = false;
                     if (responseMap.containsKey("similar_keywords")) {
                         List<String> similarKeywords = (List<String>) responseMap.get("similar_keywords");
                         if (similarKeywords != null && !similarKeywords.isEmpty()) {
                             boolean first = true;
                             for (String keyword : similarKeywords) {
-                                if (!first) {
-                                    keywordsText.append(", ");
-                                } else {
-                                    first = false;
+                                if (StringUtils.isNotBlank(keyword)) {
+                                    if (!first) {
+                                        keywordsText.append(", ");
+                                    } else {
+                                        first = false;
+                                    }
+                                    keywordsText.append(keyword);
+                                    hasKeywords = true;
                                 }
-                                keywordsText.append(keyword);
                             }
                         }
                     }
 
                     StringBuilder bucketsText = new StringBuilder();
+                    boolean hasBuckets = false;
                     if (responseMap.containsKey("similar_buckets")) {
                         List<String> similarBuckets = (List<String>) responseMap.get("similar_buckets");
                         if (similarBuckets != null && !similarBuckets.isEmpty()) {
                             boolean first = true;
                             for (String bucket : similarBuckets) {
-                                if (!first) {
-                                    bucketsText.append(", ");
-                                } else {
-                                    first = false;
+                                if (StringUtils.isNotBlank(bucket)) {
+                                    if (!first) {
+                                        bucketsText.append(", ");
+                                    } else {
+                                        first = false;
+                                    }
+                                    bucketsText.append(bucket);
+                                    hasBuckets = true;
                                 }
-                                bucketsText.append(bucket);
                             }
                         }
                     }
 
-                    // Save the extracted keywords using the schema property
-                    m.setProperty(OTHER_RELEVANT_KEYWORDS.getPropertyName(),
-                            Values.stringValue(keywordsText.toString()),
-                            data.createPropertyMetadata(getUser()),
-                            data.getVisibility());
+                    if (hasKeywords) {
+                        m.setProperty(OTHER_RELEVANT_KEYWORDS.getPropertyName(),
+                                Values.stringValue(keywordsText.toString()),
+                                data.createPropertyMetadata(getUser()),
+                                data.getVisibility());
+                    } else {
+                        m.deleteProperty(OTHER_RELEVANT_KEYWORDS.getPropertyName(), data.getVisibility());
+                    }
 
-                    // Save the extracted buckets using the schema property
-                    m.setProperty(OTHER_RELEVANT_BUCKETS.getPropertyName(),
-                            Values.stringValue(bucketsText.toString()),
-                            data.createPropertyMetadata(getUser()),
-                            data.getVisibility());
+                    if (hasBuckets) {
+                        m.setProperty(OTHER_RELEVANT_BUCKETS.getPropertyName(),
+                                Values.stringValue(bucketsText.toString()),
+                                data.createPropertyMetadata(getUser()),
+                                data.getVisibility());
+                    } else {
+                        m.deleteProperty(OTHER_RELEVANT_BUCKETS.getPropertyName(), data.getVisibility());
+                    }
 
                     m.save(getAuthorizations());
                     getGraph().flush();
@@ -238,7 +250,6 @@ public class IntelliDockersSemanticSearchWorker extends DataWorker {
             timer.close();
         }
     }
-
     private void clearSemanticResults(DataWorkerData data) {
         ElementMutation<Vertex> m = refresh(data.getElement()).prepareMutation();
         m.deleteProperty(OTHER_RELEVANT_KEYWORDS.getPropertyName(), Visibility.EMPTY);
