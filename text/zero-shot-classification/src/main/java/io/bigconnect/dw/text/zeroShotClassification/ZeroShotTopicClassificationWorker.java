@@ -45,6 +45,9 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
     public static final String CONFIG_URL = "fastapi.api.url";
     public static final String API_PATH = "fastapi.api.classification";
     public static final String CONFIG_API_KEY = "vllm.api.key";
+    public static final String CONFIG_DEV_MODE = "devmode.classifier";
+    private boolean devMode;
+
     public static final String CONFIG_TIMEOUT = "zeroshotclassifier.timeout.seconds";
 
     private static final int DEFAULT_TIMEOUT_SECONDS = 50000;
@@ -69,6 +72,7 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
 
         String baseUrl = getConfiguration().get(CONFIG_URL, null);
         String path = getConfiguration().get(API_PATH, null);
+        this.devMode = Boolean.parseBoolean(getConfiguration().get(CONFIG_DEV_MODE, "false"));
         String apiKey = getConfiguration().get(CONFIG_API_KEY, null);
         int timeoutSeconds = Integer.parseInt(getConfiguration().get(CONFIG_TIMEOUT, String.valueOf(DEFAULT_TIMEOUT_SECONDS)));
 
@@ -132,11 +136,14 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
         }
 
         // Check if otherRelevantKeywords property is null or empty
-        Property otherRelevantKeywordsProperty = element.getProperty(OTHER_RELEVANT_KEYWORDS_PROPERTY);
-        if (otherRelevantKeywordsProperty == null ||
-                StringUtils.isEmpty(otherRelevantKeywordsProperty.getValue().toString())) {
-            LOGGER.debug("otherRelevantKeywords is null or empty, not handling element: " + element.getId());
-            return false;
+        if (!devMode) {
+            // Check if otherRelevantKeywords property is null or empty
+            Property otherRelevantKeywordsProperty = element.getProperty(OTHER_RELEVANT_KEYWORDS_PROPERTY);
+            if (otherRelevantKeywordsProperty == null ||
+                    StringUtils.isEmpty(otherRelevantKeywordsProperty.getValue().toString())) {
+                LOGGER.debug("otherRelevantKeywords is null or empty, not handling element: " + element.getId());
+                return false;
+            }
         }
 
         // Check for text property

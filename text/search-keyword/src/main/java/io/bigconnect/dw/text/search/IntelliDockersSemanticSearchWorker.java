@@ -43,6 +43,9 @@ import static io.bigconnect.dw.text.search.SemanticSearchSchemaContribution.OTHE
 @Description("Performs semantic search using FastAPI endpoint")
 public class IntelliDockersSemanticSearchWorker extends DataWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(IntelliDockersSemanticSearchWorker.class);
+    public static final String CONFIG_DEV_MODE = "devmode.classifier";
+    private boolean devMode;
+
 
     public static final String CONFIG_URL = "fastapi.api.url";
     public static final String CONFIG_API_KEY = "vllm.api.key";
@@ -64,7 +67,7 @@ public class IntelliDockersSemanticSearchWorker extends DataWorker {
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
         super.prepare(workerPrepareData);
-
+        this.devMode = Boolean.parseBoolean(getConfiguration().get(CONFIG_DEV_MODE, "false"));
         String baseUrl = getConfiguration().get(CONFIG_URL, null);
         String apiKey = getConfiguration().get(CONFIG_API_KEY, null);
         int timeoutSeconds = Integer.parseInt(getConfiguration().get(CONFIG_TIMEOUT, String.valueOf(DEFAULT_TIMEOUT_SECONDS)));
@@ -92,6 +95,11 @@ public class IntelliDockersSemanticSearchWorker extends DataWorker {
 
     @Override
     public boolean isHandled(Element element, Property property) {
+        if (devMode) {
+            LOGGER.debug("Dev mode enabled, skipping element: {}", element.getId());
+            return false;
+        }
+
         if (property == null) return false;
         if (IgnoredMimeTypes.contains(BcSchema.MIME_TYPE.getFirstPropertyValue(element))) return false;
 
