@@ -239,6 +239,7 @@ public class FaceDetectorWorker extends DataWorker {
 
                 if (result.result != null && !result.result.isEmpty()) {
                     //RecognitionResponse.Result faceResult = result.result.get(0);
+                    String titles = "";
                     for(RecognitionResponse.Result faceResult: result.result)
                         if (faceResult.subjects != null && !faceResult.subjects.isEmpty()) {
                             RecognitionResponse.Result.Subject bestMatch = faceResult.subjects.get(0);
@@ -287,10 +288,12 @@ public class FaceDetectorWorker extends DataWorker {
                                         LOGGER.info("Created rawContainsImageOfEntity relationship between detected face and person {} with key {}",
                                                 matchedPersonName, detectedObject.getKey());
                                     }
-
+                                    if (StringUtils.isNotBlank(matchedPersonName)){
+                                        titles = titles.concat(matchedPersonName + " ");
+                                    }
                                     // Update image title
                                     ElementMutation<Element> mutation = imageElement.prepareMutation();
-                                    BcSchema.TITLE.addPropertyValue(mutation, "title", matchedPersonName, Visibility.EMPTY);
+                                    BcSchema.TITLE.addPropertyValue(mutation, "title", titles, Visibility.EMPTY);
                                     mutation.save(getAuthorizations());
 
                                     getGraph().flush();
