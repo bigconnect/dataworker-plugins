@@ -306,8 +306,7 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
                                         String classification = result.get("overall_classification").asText();
                                         LOGGER.debug("Result " + i + " has overall_classification: " + classification);
 
-                                        // Only save non-empty classifications
-                                        if (StringUtils.isNotBlank(classification)) {
+                                        if (StringUtils.isNotBlank(classification) && !StringUtils.equals(classification, "No confident classification")) {
                                             // Save using index+1 (1-based for property names)
                                             String propertyName = getClassificationPropertyName(i + 1);
                                             LOGGER.debug("Setting property " + propertyName + ": " + classification);
@@ -318,7 +317,7 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
                                                     data.getVisibility());
                                             savedCount++;
                                         } else {
-                                            LOGGER.warn("Result " + i + " has empty classification value, skipping");
+                                            LOGGER.warn("Result " + i + " has empty, blank, or 'No confident classification' value, skipping");
                                         }
                                     } else {
                                         LOGGER.warn("Result " + i + " missing overall_classification field");
