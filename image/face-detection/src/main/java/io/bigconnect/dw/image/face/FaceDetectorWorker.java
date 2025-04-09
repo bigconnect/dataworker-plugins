@@ -27,12 +27,14 @@ import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.RequestBody;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.tools.ant.util.CollectionUtils;
 import retrofit2.Call;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
 import retrofit2.http.*;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
 
@@ -44,7 +46,6 @@ public class FaceDetectorWorker extends DataWorker {
     public static final String CONFIG_BASE_URL = "base-compre-face.url";
     public static final String CONFIG_API_KEY = "face-detector.api.key";
     public static final String CONFIDENCE_THRESHOLD = "compre-face.threshold";
-    private ProcessedImageInfo lastProcessedImage;
     private CompreFaceService compreFaceService;
     private FaceDetectorService faceService;
 
@@ -106,19 +107,18 @@ public class FaceDetectorWorker extends DataWorker {
         String conceptType = ((StorableVertex) element).getConceptType();
         byte[] imageData = IOUtils.toBytes(spv.getInputStream());
 
-        // Create current image info and check for duplicates
-        ProcessedImageInfo currentImage = new ProcessedImageInfo(title, imageData, elementId);
-
-        // Thread-safe check for duplicate processing
-        synchronized (this) {
-            if (lastProcessedImage != null && lastProcessedImage.matches(currentImage)) {
-                LOGGER.info("Skipping duplicate image processing for title: '{}', elementId: {}",
-                        title, elementId);
-                return;
+        try {
+            Response<SubjectsResponse> execute = compreFaceService.getSubjects(apiKey).execute();
+            if (execute.isSuccessful() && execute.body() != null) {
+                List<String> subjects = execute.body().getSubjects();
+                if(subjects.contains(title)){
+                    return;
+                }
+            } else {
+                LOGGER.error("Request failed: " + execute.code());
             }
-
-            // Update last processed image
-            lastProcessedImage = currentImage;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
 
         try {

@@ -31,4 +31,7 @@ public interface CompreFaceService {
     @DELETE("api/v1/recognition/subjects/{subject}")
     Call<Void> deleteSubject(@Header("X-Api-Key") String apiKey, @Path("subject") String subject);
 
+    @GET("api/v1/recognition/subjects")
+    Call<SubjectsResponse> getSubjects(@Header("X-Api-Key") String apiKey);
+
 }
