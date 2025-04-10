@@ -37,6 +37,7 @@ import retrofit2.http.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Name("Face Detector")
 @Description("Detects faces in images")
@@ -48,6 +49,9 @@ public class FaceDetectorWorker extends DataWorker {
     public static final String CONFIDENCE_THRESHOLD = "compre-face.threshold";
     private CompreFaceService compreFaceService;
     private FaceDetectorService faceService;
+    private static final Map<String, Long> recentlyProcessedTitles = new ConcurrentHashMap<>();
+    private final long TIMEOUT_MS = 10_000;
+    private static final Object lock = new Object();
 
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
@@ -107,18 +111,9 @@ public class FaceDetectorWorker extends DataWorker {
         String conceptType = ((StorableVertex) element).getConceptType();
         byte[] imageData = IOUtils.toBytes(spv.getInputStream());
 
-        try {
-            Response<SubjectsResponse> execute = compreFaceService.getSubjects(apiKey).execute();
-            if (execute.isSuccessful() && execute.body() != null) {
-                List<String> subjects = execute.body().getSubjects();
-                if(subjects.contains(title)){
-                    return;
-                }
-            } else {
-                LOGGER.error("Request failed: " + execute.code());
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        if (!shouldProcess(title)) {
+            LOGGER.warn("Skipping duplicate processing for title: " + title);
+            return;
         }
 
         try {
@@ -180,6 +175,7 @@ public class FaceDetectorWorker extends DataWorker {
                     }
                 } catch (Exception e) {
                     LOGGER.warn("Failed to create subject or add face --- for '{}': {}", title, e.getMessage());
+                    LOGGER.warn("Failed to create subject or add face --- for " + title + ", e.msg: " + e.getMessage());
                     e.printStackTrace();
                 }
             } else if (("person".equalsIgnoreCase(conceptType) && StringUtils.isEmpty(title)) ||
@@ -219,6 +215,23 @@ public class FaceDetectorWorker extends DataWorker {
         }
     }
 
+    private boolean shouldProcess(String title) {
+        long now = System.currentTimeMillis();
+        if (StringUtils.isBlank(title)) {
+            return true;
+        }
+        synchronized (lock) {
+            recentlyProcessedTitles.entrySet().removeIf(entry -> now - entry.getValue() > TIMEOUT_MS);
+
+            Long lastTime = recentlyProcessedTitles.get(title);
+            if (lastTime != null && now - lastTime < TIMEOUT_MS) {
+                return false;
+            }
+
+            recentlyProcessedTitles.put(title, now);
+            return true;
+        }
+    }
 
     private void detectAndIdentifyPerson(byte[] imageData, Element imageElement) {
         try {
@@ -240,7 +253,7 @@ public class FaceDetectorWorker extends DataWorker {
                 if (result.result != null && !result.result.isEmpty()) {
                     //RecognitionResponse.Result faceResult = result.result.get(0);
                     String titles = "";
-                    for(RecognitionResponse.Result faceResult: result.result)
+                    for (RecognitionResponse.Result faceResult : result.result)
                         if (faceResult.subjects != null && !faceResult.subjects.isEmpty()) {
                             RecognitionResponse.Result.Subject bestMatch = faceResult.subjects.get(0);
 
@@ -288,7 +301,7 @@ public class FaceDetectorWorker extends DataWorker {
                                         LOGGER.info("Created rawContainsImageOfEntity relationship between detected face and person {} with key {}",
                                                 matchedPersonName, detectedObject.getKey());
                                     }
-                                    if (StringUtils.isNotBlank(matchedPersonName)){
+                                    if (StringUtils.isNotBlank(matchedPersonName)) {
                                         titles = titles.concat(matchedPersonName + " ");
                                     }
                                     // Update image title
