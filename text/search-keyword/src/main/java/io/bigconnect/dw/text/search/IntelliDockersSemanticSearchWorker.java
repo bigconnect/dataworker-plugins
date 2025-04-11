@@ -103,11 +103,13 @@ public class IntelliDockersSemanticSearchWorker extends DataWorker {
         if (property == null) return false;
         if (IgnoredMimeTypes.contains(BcSchema.MIME_TYPE.getFirstPropertyValue(element))) return false;
 
-        // Check if otherRelevantKeywords property exists
         Property keywordsProperty = element.getProperty(OTHER_RELEVANT_KEYWORDS.getPropertyName());
+
         if (keywordsProperty != null) {
-            LOGGER.debug("otherRelevantKeywords property not present, not handling element: {}", element.getId());
-            return false;
+            if (keywordsProperty.getValue() != null &&
+                    !"null".equals(keywordsProperty.getValue().toString())) {
+                return false;
+            }
         }
 
         // Check for text property
@@ -241,7 +243,11 @@ public class IntelliDockersSemanticSearchWorker extends DataWorker {
 
                     m.save(getAuthorizations());
                     getGraph().flush();
-                    pushWorkQueueUpdate(data);
+
+                    // Only push to queue if we actually set properties
+                    if (hasKeywords || hasBuckets) {
+                        pushWorkQueueUpdate(data, hasKeywords, hasBuckets);
+                    }
                 } else {
                     LOGGER.warn("Semantic search API call failed with code: %d", response.code());
                 }
@@ -250,38 +256,42 @@ public class IntelliDockersSemanticSearchWorker extends DataWorker {
             timer.close();
         }
     }
+
     private void clearSemanticResults(DataWorkerData data) {
         ElementMutation<Vertex> m = refresh(data.getElement()).prepareMutation();
         m.deleteProperty(OTHER_RELEVANT_KEYWORDS.getPropertyName(), Visibility.EMPTY);
         m.deleteProperty(OTHER_RELEVANT_BUCKETS.getPropertyName(), Visibility.EMPTY);
         m.save(getAuthorizations());
         getGraph().flush();
-        pushWorkQueueUpdate(data);
     }
 
-    private void pushWorkQueueUpdate(DataWorkerData data) {
+    private void pushWorkQueueUpdate(DataWorkerData data, boolean updateKeywords, boolean updateBuckets) {
         // Update for the keywords property
-        getWorkQueueRepository().pushOnDwQueue(
-                refresh(data.getElement()),
-                "",
-                OTHER_RELEVANT_KEYWORDS.getPropertyName(),
-                data.getWorkspaceId(),
-                data.getVisibilitySource(),
-                data.getPriority(),
-                ElementOrPropertyStatus.UPDATE,
-                null
-        );
+        if (updateKeywords) {
+            getWorkQueueRepository().pushOnDwQueue(
+                    refresh(data.getElement()),
+                    "",
+                    OTHER_RELEVANT_KEYWORDS.getPropertyName(),
+                    data.getWorkspaceId(),
+                    data.getVisibilitySource(),
+                    data.getPriority(),
+                    ElementOrPropertyStatus.UPDATE,
+                    null
+            );
+        }
 
         // Update for the buckets property
-        getWorkQueueRepository().pushOnDwQueue(
-                refresh(data.getElement()),
-                "",
-                OTHER_RELEVANT_BUCKETS.getPropertyName(),
-                data.getWorkspaceId(),
-                data.getVisibilitySource(),
-                data.getPriority(),
-                ElementOrPropertyStatus.UPDATE,
-                null
-        );
+        if (updateBuckets) {
+            getWorkQueueRepository().pushOnDwQueue(
+                    refresh(data.getElement()),
+                    "",
+                    OTHER_RELEVANT_BUCKETS.getPropertyName(),
+                    data.getWorkspaceId(),
+                    data.getVisibilitySource(),
+                    data.getPriority(),
+                    ElementOrPropertyStatus.UPDATE,
+                    null
+            );
+        }
     }
 }

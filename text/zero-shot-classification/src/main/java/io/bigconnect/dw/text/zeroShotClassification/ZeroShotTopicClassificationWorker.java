@@ -1,4 +1,5 @@
 package io.bigconnect.dw.text.zeroShotClassification;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mware.core.ingest.dataworker.DataWorker;
@@ -193,8 +194,39 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
             return;
         }
 
-        if (StringUtils.isEmpty(text)) {
-            LOGGER.warn("Text is empty for element: " + refreshedElement.getId() + ", clearing classification results");
+        // Check if text is empty or just whitespace
+        if (StringUtils.isBlank(text)) {
+            LOGGER.info("Text is empty, checking for text_from_retweet property");
+
+            // Try to get text_from_retweet property
+            Property retweetTextProperty = refreshedElement.getProperty("text_from_retweet");
+            if (retweetTextProperty != null && retweetTextProperty.getValue() != null) {
+                String retweetText = retweetTextProperty.getValue().toString();
+                if (StringUtils.isNotBlank(retweetText)) {
+                    LOGGER.info("Using text_from_retweet property instead of empty text, length: " + retweetText.length());
+                    text = retweetText;
+                } else {
+                    LOGGER.warn("text_from_retweet property exists but is blank");
+                }
+            } else {
+                LOGGER.warn("text_from_retweet property not found");
+
+                // Also check for empty title as a fallback
+                Property titleProperty = BcSchema.TITLE.getProperty(refreshedElement, data.getProperty().getKey());
+                if (titleProperty != null && titleProperty.getValue() != null) {
+                    String title = titleProperty.getValue().toString();
+                    if (StringUtils.isBlank(title)) {
+                        LOGGER.info("Title is also empty, checking for text_from_retweet again");
+                        // We've already checked, so we know it's not available or is empty
+                    }
+                }
+            }
+        }
+
+        // Final check if we have any text to process
+        if (StringUtils.isBlank(text)) {
+            LOGGER.warn("No usable text found (text, title, and text_from_retweet are all empty) for element: " +
+                    refreshedElement.getId() + ", clearing classification results");
             clearClassificationResults(data);
             return;
         }
@@ -226,7 +258,6 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
             getGraph().flush();
             LOGGER.debug("Graph flushed after clearing properties");
 
-            pushWorkQueueUpdate(data);
             LOGGER.info("Work queue updates pushed after clearing properties");
         } catch (Exception e) {
             LOGGER.error("Error clearing classification results", e);
@@ -333,35 +364,54 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
                                     } catch (Exception e) {
                                         LOGGER.error("Error saving mutation", e);
                                     }
+                                } else {
+                                    LOGGER.warn("No valid classification results found, setting default 'No confident classification'");
+
+                                    // Set the first classification property to a default value to prevent reprocessing
+                                    String propertyName = getClassificationPropertyName(1);
+                                    m.setProperty(propertyName,
+                                            Values.stringValue("No confident classification"),
+                                            data.createPropertyMetadata(getUser()),
+                                            data.getVisibility());
 
                                     try {
-                                        getGraph().flush();
-                                        LOGGER.info("Graph flushed successfully");
+                                        m.save(getAuthorizations());
+                                        LOGGER.info("Default classification property saved successfully");
                                     } catch (Exception e) {
-                                        LOGGER.error("Error flushing graph", e);
+                                        LOGGER.error("Error saving default classification property", e);
                                     }
-
-                                    pushWorkQueueUpdate(data);
-                                    LOGGER.info("Work queue updates pushed");
-                                } else {
-                                    LOGGER.warn("No valid classification results found, not saving anything");
                                 }
+
+                                try {
+                                    getGraph().flush();
+                                    LOGGER.info("Graph flushed successfully");
+                                } catch (Exception e) {
+                                    LOGGER.error("Error flushing graph", e);
+                                }
+
+                                pushWorkQueueUpdate(data);
+                                LOGGER.info("Work queue updates pushed");
                             } else {
                                 LOGGER.warn("classification_results is not an array: " + classificationResults);
+                                setDefaultClassification(data);
                             }
                         } else if (rootNode.has("error")) {
                             LOGGER.error("API returned error: " + rootNode.get("error"));
+                            setDefaultClassification(data);
                         } else {
                             LOGGER.warn("Response missing classification_results field");
+                            setDefaultClassification(data);
                         }
                     } catch (Exception e) {
                         LOGGER.error("Error processing API response", e);
                         LOGGER.debug("Response that caused error, length: " + responseJson.length());
+                        setDefaultClassification(data);
                     }
                 } else {
                     String errorBody = response.body() != null ? response.body().string() : "null";
                     LOGGER.error("Zero-shot classification API call failed with code: " +
                             response.code() + ", body: " + errorBody);
+                    setDefaultClassification(data);
                 }
             }
         } finally {
@@ -378,6 +428,30 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
             long endTime = System.currentTimeMillis();
             LOGGER.info("ZeroShot classification completed in " +
                     (endTime - startTime) + " ms for element: " + data.getElement().getId());
+        }
+    }
+
+    private void setDefaultClassification(DataWorkerData data) {
+        try {
+            LOGGER.info("Setting default classification due to API error or invalid response");
+            Vertex vertex = (Vertex) refresh(data.getElement());
+            ElementMutation<Vertex> m = vertex.prepareMutation();
+
+            // Clear previous classifications first
+            clearAllClassificationProperties(m);
+
+            // Set default classification
+            String propertyName = getClassificationPropertyName(1);
+            m.setProperty(propertyName,
+                    Values.stringValue("No confident classification"),
+                    data.createPropertyMetadata(getUser()),
+                    data.getVisibility());
+
+            m.save(getAuthorizations());
+            getGraph().flush();
+            LOGGER.info("Default classification set successfully after error");
+        } catch (Exception e) {
+            LOGGER.error("Failed to set default classification after error", e);
         }
     }
 
