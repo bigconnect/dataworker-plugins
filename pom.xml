@@ -108,6 +108,7 @@
         <module>tester</module>
         <module>classification</module>
         <module>classification-vllm</module>
+        <module>dw-twitter-post</module>
     </modules>
 
     <dependencies>
