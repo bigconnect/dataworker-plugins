@@ -23,6 +23,8 @@ import com.mware.ge.util.Preconditions;
 import com.mware.ge.values.storable.StreamingPropertyValue;
 import com.mware.ge.values.storable.Values;
 import com.mware.ontology.IgnoredMimeTypes;
+import io.bigconnect.dw.text.common.NerUtils;
+import io.bigconnect.dw.text.common.TextSpan;
 import okhttp3.*;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -31,7 +33,9 @@ import javax.inject.Inject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -270,152 +274,24 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
 
         try {
             LOGGER.info("Starting classification API call for element: " + data.getElement().getId());
-            // Only create timer if classificationTimer is properly initialized
             if (classificationTimer != null) {
                 timer = new PausableTimerContext(classificationTimer);
                 LOGGER.debug("Timer context created");
             }
 
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("text", text);
-            requestBody.put("dev", false);
+            // Create chunks with NerUtils to see if we need multiple chunks
+            List<TextSpan> chunks = NerUtils.getSmartMiniLMChunks(text);
 
-            String jsonRequest = objectMapper.writeValueAsString(requestBody);
-            LOGGER.debug("Request body created, length: " + jsonRequest.length());
-
-            RequestBody body = RequestBody.create(JSON, jsonRequest);
-            Request request = new Request.Builder()
-                    .url(apiUrl)
-                    .post(body)
-                    .build();
-            LOGGER.info("Sending request to API: " + apiUrl);
-
-            long requestSentTime = System.currentTimeMillis();
-            try (Response response = client.newCall(request).execute()) {
-                long responseReceivedTime = System.currentTimeMillis();
-                LOGGER.info("Received API response in " +
-                        (responseReceivedTime - requestSentTime) +
-                        " ms, status code: " + response.code());
-
-                if (response.isSuccessful() && response.body() != null) {
-                    String responseJson = response.body().string();
-                    LOGGER.debug("Response body received, length: " + responseJson.length() + " characters");
-
-                    try {
-                        // Create a proper class for the response structure
-                        JsonNode rootNode = objectMapper.readTree(responseJson);
-                        LOGGER.debug("Response parsed to JSON, first 500 chars: " +
-                                rootNode.toString().substring(0, Math.min(500, rootNode.toString().length())));
-
-                        if (rootNode.has("classification_results")) {
-                            LOGGER.info("Found classification_results in response");
-                            JsonNode classificationResults = rootNode.get("classification_results");
-
-                            if (classificationResults.isArray()) {
-                                LOGGER.info("Classification results is an array with " +
-                                        classificationResults.size() + " items");
-
-                                Vertex vertex = (Vertex) refresh(data.getElement());
-                                LOGGER.debug("Element refreshed for updating: " + vertex.getId());
-
-                                ElementMutation<Vertex> m = vertex.prepareMutation();
-                                LOGGER.debug("Element mutation prepared");
-
-                                // Clear previous classifications
-                                clearAllClassificationProperties(m);
-                                LOGGER.debug("Previous classification properties cleared");
-
-                                int resultCount = Math.min(classificationResults.size(), MAX_CLASSIFICATIONS);
-                                LOGGER.info("Processing " + resultCount + " classification results");
-
-                                int savedCount = 0;
-                                for (int i = 0; i < resultCount; i++) {
-                                    JsonNode result = classificationResults.get(i);
-                                    LOGGER.debug("Processing result " + i + ": " + result);
-
-                                    if (result.has("overall_classification")) {
-                                        String classification = result.get("overall_classification").asText();
-                                        LOGGER.debug("Result " + i + " has overall_classification: " + classification);
-
-                                        if (StringUtils.isNotBlank(classification) && !StringUtils.equals(classification, "No confident classification")) {
-                                            // Save using index+1 (1-based for property names)
-                                            String propertyName = getClassificationPropertyName(i + 1);
-                                            LOGGER.debug("Setting property " + propertyName + ": " + classification);
-
-                                            m.setProperty(propertyName,
-                                                    Values.stringValue(classification),
-                                                    data.createPropertyMetadata(getUser()),
-                                                    data.getVisibility());
-                                            savedCount++;
-                                        } else {
-                                            LOGGER.warn("Result " + i + " has empty, blank, or 'No confident classification' value, skipping");
-                                        }
-                                    } else {
-                                        LOGGER.warn("Result " + i + " missing overall_classification field");
-                                    }
-                                }
-
-                                // Only save if we have at least one valid classification
-                                if (savedCount > 0) {
-                                    LOGGER.info("Saving mutation with " + savedCount + " classification properties");
-                                    try {
-                                        m.save(getAuthorizations());
-                                        LOGGER.info("Mutation saved successfully");
-                                    } catch (Exception e) {
-                                        LOGGER.error("Error saving mutation", e);
-                                    }
-                                } else {
-                                    LOGGER.warn("No valid classification results found, setting default 'No confident classification'");
-
-                                    // Set the first classification property to a default value to prevent reprocessing
-                                    String propertyName = getClassificationPropertyName(1);
-                                    m.setProperty(propertyName,
-                                            Values.stringValue("No confident classification"),
-                                            data.createPropertyMetadata(getUser()),
-                                            data.getVisibility());
-
-                                    try {
-                                        m.save(getAuthorizations());
-                                        LOGGER.info("Default classification property saved successfully");
-                                    } catch (Exception e) {
-                                        LOGGER.error("Error saving default classification property", e);
-                                    }
-                                }
-
-                                try {
-                                    getGraph().flush();
-                                    LOGGER.info("Graph flushed successfully");
-                                } catch (Exception e) {
-                                    LOGGER.error("Error flushing graph", e);
-                                }
-
-                                pushWorkQueueUpdate(data);
-                                LOGGER.info("Work queue updates pushed");
-                            } else {
-                                LOGGER.warn("classification_results is not an array: " + classificationResults);
-                                setDefaultClassification(data);
-                            }
-                        } else if (rootNode.has("error")) {
-                            LOGGER.error("API returned error: " + rootNode.get("error"));
-                            setDefaultClassification(data);
-                        } else {
-                            LOGGER.warn("Response missing classification_results field");
-                            setDefaultClassification(data);
-                        }
-                    } catch (Exception e) {
-                        LOGGER.error("Error processing API response", e);
-                        LOGGER.debug("Response that caused error, length: " + responseJson.length());
-                        setDefaultClassification(data);
-                    }
-                } else {
-                    String errorBody = response.body() != null ? response.body().string() : "null";
-                    LOGGER.error("Zero-shot classification API call failed with code: " +
-                            response.code() + ", body: " + errorBody);
-                    setDefaultClassification(data);
-                }
+            if (chunks.size() > 1) {
+                LOGGER.info("Text requires multiple chunks (" + chunks.size() + "), using chunked processing");
+                // Use the chunks we already created
+                processWithChunking(chunks, data);
+            } else {
+                LOGGER.info("Text fits in a single chunk, using standard processing");
+                processWithoutChunking(text, data);
             }
+
         } finally {
-            // Only close if timer was created and not null
             if (timer != null) {
                 try {
                     timer.close();
@@ -431,6 +307,287 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
         }
     }
 
+    // New method for handling large texts with chunking
+// New method for handling large texts with chunking
+    private void processWithChunking(List<TextSpan> chunks, DataWorkerData data) throws Exception {
+        LOGGER.info("Processing " + chunks.size() + " chunks for classification");
+
+        // Maps to store aggregated classification results for each word list
+        Map<Integer, Map<String, Integer>> wordListClassifications = new HashMap<>();
+
+        // Process each chunk
+        for (int i = 0; i < chunks.size(); i++) {
+            TextSpan chunk = chunks.get(i);
+            LOGGER.info("Processing chunk " + (i+1) + "/" + chunks.size() +
+                    " (chars " + chunk.getStart() + "-" + chunk.getEnd() + ")");
+
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("text", chunk.getText());
+            requestBody.put("dev", devMode);
+
+            String jsonRequest = objectMapper.writeValueAsString(requestBody);
+            RequestBody body = RequestBody.create(JSON, jsonRequest);
+
+            Request request = new Request.Builder()
+                    .url(apiUrl)
+                    .post(body)
+                    .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                if (response.isSuccessful() && response.body() != null) {
+                    String responseJson = response.body().string();
+                    JsonNode rootNode = objectMapper.readTree(responseJson);
+
+                    if (rootNode.has("classification_results") && rootNode.get("classification_results").isArray()) {
+                        JsonNode results = rootNode.get("classification_results");
+
+                        // Process each word list result from this chunk
+                        for (int wordListIndex = 0; wordListIndex < results.size(); wordListIndex++) {
+                            JsonNode result = results.get(wordListIndex);
+
+                            if (result.has("overall_classification")) {
+                                String classification = result.get("overall_classification").asText();
+
+                                // Skip empty or "No confident classification"
+                                if (StringUtils.isNotBlank(classification) &&
+                                        !StringUtils.equals(classification, "No confident classification")) {
+
+                                    // Get or create the map for this word list index
+                                    Map<String, Integer> counts = wordListClassifications.computeIfAbsent(
+                                            wordListIndex, k -> new HashMap<>());
+
+                                    // Increment the count for this classification
+                                    counts.put(classification, counts.getOrDefault(classification, 0) + 1);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    LOGGER.warn("API call failed for chunk " + (i+1) + ": " + response.code());
+                }
+            } catch (Exception e) {
+                LOGGER.error("Error processing chunk " + (i+1), e);
+            }
+        }
+
+        // After processing all chunks, find the most common classification for each word list
+        Map<Integer, String> finalClassifications = new HashMap<>();
+
+        for (Map.Entry<Integer, Map<String, Integer>> entry : wordListClassifications.entrySet()) {
+            int wordListIndex = entry.getKey();
+            Map<String, Integer> counts = entry.getValue();
+
+            if (!counts.isEmpty()) {
+                // Find the most common classification for this word list
+                String topClassification = counts.entrySet().stream()
+                        .max(Map.Entry.comparingByValue())
+                        .map(Map.Entry::getKey)
+                        .orElse("No confident classification");
+
+                finalClassifications.put(wordListIndex, topClassification);
+            }
+        }
+
+        // Save the final classifications
+        Vertex vertex = (Vertex) refresh(data.getElement());
+        ElementMutation<Vertex> m = vertex.prepareMutation();
+
+        // Clear previous classifications
+        clearAllClassificationProperties(m);
+
+        // Set new classifications based on word list order (not frequency)
+        int savedCount = 0;
+        for (int i = 0; i < MAX_CLASSIFICATIONS; i++) {
+            if (finalClassifications.containsKey(i)) {
+                String classification = finalClassifications.get(i);
+                String propertyName = getClassificationPropertyName(i + 1);
+
+                LOGGER.debug("Setting property " + propertyName + ": " + classification);
+
+                m.setProperty(propertyName,
+                        Values.stringValue(classification),
+                        data.createPropertyMetadata(getUser()),
+                        data.getVisibility());
+                savedCount++;
+            }
+        }
+
+        // Only save if we have at least one valid classification
+        if (savedCount > 0) {
+            LOGGER.info("Saving mutation with " + savedCount + " classification properties");
+            try {
+                m.save(getAuthorizations());
+                LOGGER.info("Mutation saved successfully");
+            } catch (Exception e) {
+                LOGGER.error("Error saving mutation", e);
+            }
+        } else {
+            LOGGER.warn("No valid classification results found, setting default 'No confident classification'");
+
+            // Set the first classification property to a default value
+            String propertyName = getClassificationPropertyName(1);
+            m.setProperty(propertyName,
+                    Values.stringValue("No confident classification"),
+                    data.createPropertyMetadata(getUser()),
+                    data.getVisibility());
+
+            try {
+                m.save(getAuthorizations());
+                LOGGER.info("Default classification property saved successfully");
+            } catch (Exception e) {
+                LOGGER.error("Error saving default classification property", e);
+            }
+        }
+
+        try {
+            getGraph().flush();
+            LOGGER.info("Graph flushed successfully");
+        } catch (Exception e) {
+            LOGGER.error("Error flushing graph", e);
+        }
+
+        LOGGER.info("Work queue updates pushed");
+    }
+
+    // Modified version of the current implementation for small texts
+    private void processWithoutChunking(String text, DataWorkerData data) throws Exception {
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("text", text);
+        requestBody.put("dev", devMode);
+
+        String jsonRequest = objectMapper.writeValueAsString(requestBody);
+        LOGGER.debug("Request body created, length: " + jsonRequest.length());
+
+        RequestBody body = RequestBody.create(JSON, jsonRequest);
+        Request request = new Request.Builder()
+                .url(apiUrl)
+                .post(body)
+                .build();
+        LOGGER.info("Sending request to API: " + apiUrl);
+
+        long requestSentTime = System.currentTimeMillis();
+        try (Response response = client.newCall(request).execute()) {
+            long responseReceivedTime = System.currentTimeMillis();
+            LOGGER.info("Received API response in " +
+                    (responseReceivedTime - requestSentTime) +
+                    " ms, status code: " + response.code());
+
+            // Process response - this is your existing code
+            if (response.isSuccessful() && response.body() != null) {
+                String responseJson = response.body().string();
+                LOGGER.debug("Response body received, length: " + responseJson.length() + " characters");
+
+                try {
+                    JsonNode rootNode = objectMapper.readTree(responseJson);
+                    LOGGER.debug("Response parsed to JSON, first 500 chars: " +
+                            rootNode.toString().substring(0, Math.min(500, rootNode.toString().length())));
+
+                    if (rootNode.has("classification_results")) {
+                        LOGGER.info("Found classification_results in response");
+                        JsonNode classificationResults = rootNode.get("classification_results");
+
+                        if (classificationResults.isArray()) {
+                            LOGGER.info("Classification results is an array with " +
+                                    classificationResults.size() + " items");
+
+                            Vertex vertex = (Vertex) refresh(data.getElement());
+                            LOGGER.debug("Element refreshed for updating: " + vertex.getId());
+
+                            ElementMutation<Vertex> m = vertex.prepareMutation();
+                            LOGGER.debug("Element mutation prepared");
+
+                            // Clear previous classifications
+                            clearAllClassificationProperties(m);
+                            LOGGER.debug("Previous classification properties cleared");
+
+                            int resultCount = Math.min(classificationResults.size(), MAX_CLASSIFICATIONS);
+                            LOGGER.info("Processing " + resultCount + " classification results");
+
+                            int savedCount = 0;
+                            for (int i = 0; i < resultCount; i++) {
+                                JsonNode result = classificationResults.get(i);
+                                LOGGER.debug("Processing result " + i + ": " + result);
+
+                                if (result.has("overall_classification")) {
+                                    String classification = result.get("overall_classification").asText();
+                                    LOGGER.debug("Result " + i + " has overall_classification: " + classification);
+
+                                    if (StringUtils.isNotBlank(classification) && !StringUtils.equals(classification, "No confident classification")) {
+                                        // Save using index+1 (1-based for property names)
+                                        String propertyName = getClassificationPropertyName(i + 1);
+                                        LOGGER.debug("Setting property " + propertyName + ": " + classification);
+
+                                        m.setProperty(propertyName,
+                                                Values.stringValue(classification),
+                                                data.createPropertyMetadata(getUser()),
+                                                data.getVisibility());
+                                        savedCount++;
+                                    } else {
+                                        LOGGER.warn("Result " + i + " has empty, blank, or 'No confident classification' value, skipping");
+                                    }
+                                } else {
+                                    LOGGER.warn("Result " + i + " missing overall_classification field");
+                                }
+                            }
+
+                            // Same code as before for saving
+                            if (savedCount > 0) {
+                                LOGGER.info("Saving mutation with " + savedCount + " classification properties");
+                                try {
+                                    m.save(getAuthorizations());
+                                    LOGGER.info("Mutation saved successfully");
+                                } catch (Exception e) {
+                                    LOGGER.error("Error saving mutation", e);
+                                }
+                            } else {
+                                LOGGER.warn("No valid classification results found, setting default 'No confident classification'");
+
+                                String propertyName = getClassificationPropertyName(1);
+                                m.setProperty(propertyName,
+                                        Values.stringValue("No confident classification"),
+                                        data.createPropertyMetadata(getUser()),
+                                        data.getVisibility());
+
+                                try {
+                                    m.save(getAuthorizations());
+                                    LOGGER.info("Default classification property saved successfully");
+                                } catch (Exception e) {
+                                    LOGGER.error("Error saving default classification property", e);
+                                }
+                            }
+
+                            try {
+                                getGraph().flush();
+                                LOGGER.info("Graph flushed successfully");
+                            } catch (Exception e) {
+                                LOGGER.error("Error flushing graph", e);
+                            }
+
+                            LOGGER.info("Work queue updates pushed");
+                        } else {
+                            LOGGER.warn("classification_results is not an array: " + classificationResults);
+                            setDefaultClassification(data);
+                        }
+                    } else if (rootNode.has("error")) {
+                        LOGGER.error("API returned error: " + rootNode.get("error"));
+                        setDefaultClassification(data);
+                    } else {
+                        LOGGER.warn("Response missing classification_results field");
+                        setDefaultClassification(data);
+                    }
+                } catch (Exception e) {
+                    LOGGER.error("Error processing API response", e);
+                    LOGGER.debug("Response that caused error, length: " + responseJson.length());
+                    setDefaultClassification(data);
+                }
+            } else {
+                String errorBody = response.body() != null ? response.body().string() : "null";
+                LOGGER.error("Zero-shot classification API call failed with code: " +
+                        response.code() + ", body: " + errorBody);
+                setDefaultClassification(data);
+            }
+        }
+    }
     private void setDefaultClassification(DataWorkerData data) {
         try {
             LOGGER.info("Setting default classification due to API error or invalid response");
@@ -462,22 +619,6 @@ public class ZeroShotTopicClassificationWorker extends DataWorker {
     private void clearAllClassificationProperties(ElementMutation<Vertex> m) {
         for (int i = 1; i <= MAX_CLASSIFICATIONS; i++) {
             m.deleteProperty(getClassificationPropertyName(i), Visibility.EMPTY);
-        }
-    }
-
-    private void pushWorkQueueUpdate(DataWorkerData data) {
-        // Push updates for all potential classification properties
-        for (int i = 1; i <= MAX_CLASSIFICATIONS; i++) {
-            getWorkQueueRepository().pushOnDwQueue(
-                    refresh(data.getElement()),
-                    "",
-                    getClassificationPropertyName(i),
-                    data.getWorkspaceId(),
-                    data.getVisibilitySource(),
-                    data.getPriority(),
-                    ElementOrPropertyStatus.UPDATE,
-                    null
-            );
         }
     }
 }
