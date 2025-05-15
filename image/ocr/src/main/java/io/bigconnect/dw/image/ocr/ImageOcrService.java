@@ -9,7 +9,7 @@ import retrofit2.http.Part;
 
 public interface ImageOcrService {
     @Multipart
-    @POST("/api/v1/ocr")
+    @POST("/v1/ocr")
     Call<ImageOcrResponse> process(
             @Part MultipartBody.Part file
     );

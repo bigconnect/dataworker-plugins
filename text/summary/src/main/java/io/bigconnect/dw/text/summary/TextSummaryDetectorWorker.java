@@ -110,8 +110,7 @@ public class TextSummaryDetectorWorker extends DataWorker {
         }
 
         try {
-            String language = RawObjectSchema.RAW_LANGUAGE.getFirstPropertyValue(data.getElement());
-            TextAnalysisRequest request = new TextAnalysisRequest(text, "summary", language);
+            TextAnalysisRequest request = new TextAnalysisRequest(text, "summary");
             Response<TextAnalysisResponse> response = service.processText(request).execute();
 
             if (response.isSuccessful() && response.body() != null && response.body().summary != null) {

@@ -6,6 +6,5 @@ import lombok.Getter;
 public class EmbeddingResponse {
     private String embedding_id;
     private String subject;
-    private String image_id;
 
 }

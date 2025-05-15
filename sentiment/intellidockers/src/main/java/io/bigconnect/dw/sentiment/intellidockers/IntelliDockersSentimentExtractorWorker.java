@@ -105,7 +105,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
 
         if (property.getName().equals(RawObjectSchema.RAW_LANGUAGE.getPropertyName())) {
             String language = RawObjectSchema.RAW_LANGUAGE.getPropertyValue(property);
-            return !StringUtils.isEmpty(language);
+            return !StringUtils.isEmpty(language) && "ro".equals(language);
         }
         return false;
     }
@@ -144,8 +144,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
     private void processSingleText(String text, DataWorkerData data) throws Exception {
         PausableTimerContext timer = new PausableTimerContext(detectTimer);
         try {
-            String language = RawObjectSchema.RAW_LANGUAGE.getFirstPropertyValue(data.getElement());
-            TextAnalysisRequest request = new TextAnalysisRequest(text, "sentiment", language);
+            TextAnalysisRequest request = new TextAnalysisRequest(text, "sentiment");
             Response<TextAnalysisResponse> response = service.processText(request).execute();
 
             if (response.isSuccessful() && response.body() != null && response.body().sentiment != null) {
@@ -184,8 +183,7 @@ public class IntelliDockersSentimentExtractorWorker extends DataWorker {
         int neutralCount = 0;
 
         for (TextSpan p : paragraphs) {
-            String language = RawObjectSchema.RAW_LANGUAGE.getFirstPropertyValue(data.getElement());
-            TextAnalysisRequest request = new TextAnalysisRequest(p.getText(), "sentiment", language);
+            TextAnalysisRequest request = new TextAnalysisRequest(p.getText(), "sentiment");
             Response<TextAnalysisResponse> response = service.processText(request).execute();
 
             if (response.isSuccessful() && response.body() != null && response.body().sentiment != null) {

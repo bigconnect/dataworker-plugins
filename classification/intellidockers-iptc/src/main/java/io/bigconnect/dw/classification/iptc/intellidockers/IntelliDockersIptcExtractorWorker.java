@@ -114,7 +114,6 @@ public class IntelliDockersIptcExtractorWorker extends DataWorker {
         Element element = refresh(data.getElement());
         Property textProperty = BcSchema.TEXT.getProperty(element, data.getProperty().getKey());
         StreamingPropertyValue spv = BcSchema.TEXT.getPropertyValue(textProperty);
-        String language = RawObjectSchema.RAW_LANGUAGE.getFirstPropertyValue(data.getElement());
 
         if (spv == null) {
             LOGGER.warn("Could not find text property");
@@ -127,7 +126,7 @@ public class IntelliDockersIptcExtractorWorker extends DataWorker {
         }
 
         try {
-            TextAnalysisRequest request = new TextAnalysisRequest(text, "classify", language);
+            TextAnalysisRequest request = new TextAnalysisRequest(text, "classify");
             Response<TextAnalysisResponse> response = service.processText(request).execute();
 
             if (response.isSuccessful() && response.body() != null) {

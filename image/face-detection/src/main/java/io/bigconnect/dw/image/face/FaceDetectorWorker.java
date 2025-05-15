@@ -27,17 +27,14 @@ import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.RequestBody;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.tools.ant.util.CollectionUtils;
 import retrofit2.Call;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
 import retrofit2.http.*;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Name("Face Detector")
 @Description("Detects faces in images")
@@ -47,11 +44,9 @@ public class FaceDetectorWorker extends DataWorker {
     public static final String CONFIG_BASE_URL = "base-compre-face.url";
     public static final String CONFIG_API_KEY = "face-detector.api.key";
     public static final String CONFIDENCE_THRESHOLD = "compre-face.threshold";
+    private ProcessedImageInfo lastProcessedImage;
     private CompreFaceService compreFaceService;
     private FaceDetectorService faceService;
-    private static final Map<String, Long> recentlyProcessedTitles = new ConcurrentHashMap<>();
-    private final long TIMEOUT_MS = 10_000;
-    private static final Object lock = new Object();
 
     @Override
     public void prepare(DataWorkerPrepareData workerPrepareData) throws Exception {
@@ -111,9 +106,19 @@ public class FaceDetectorWorker extends DataWorker {
         String conceptType = ((StorableVertex) element).getConceptType();
         byte[] imageData = IOUtils.toBytes(spv.getInputStream());
 
-        if (!shouldProcess(title)) {
-            LOGGER.warn("Skipping duplicate processing for title: " + title);
-            return;
+        // Create current image info and check for duplicates
+        ProcessedImageInfo currentImage = new ProcessedImageInfo(title, imageData, elementId);
+
+        // Thread-safe check for duplicate processing
+        synchronized (this) {
+            if (lastProcessedImage != null && lastProcessedImage.matches(currentImage)) {
+                LOGGER.info("Skipping duplicate image processing for title: '{}', elementId: {}",
+                        title, elementId);
+                return;
+            }
+
+            // Update last processed image
+            lastProcessedImage = currentImage;
         }
 
         try {
@@ -128,6 +133,8 @@ public class FaceDetectorWorker extends DataWorker {
             FaceDetectorSchemaContribution.PERSON_SEX.removeProperty(m, Visibility.EMPTY);
 
             RequestBody faceDetectBody = RequestBody.create(MediaType.parse("image/jpeg"), imageData);
+
+
             Response<FaceDetectorResponse> response = faceService.process(faceDetectBody).execute();
             FaceDetectorResponse result = response.body();
             Map<String, ArtifactDetectedObject> detectedFaces = new HashMap<>();
@@ -175,7 +182,6 @@ public class FaceDetectorWorker extends DataWorker {
                     }
                 } catch (Exception e) {
                     LOGGER.warn("Failed to create subject or add face --- for '{}': {}", title, e.getMessage());
-                    LOGGER.warn("Failed to create subject or add face --- for " + title + ", e.msg: " + e.getMessage());
                     e.printStackTrace();
                 }
             } else if (("person".equalsIgnoreCase(conceptType) && StringUtils.isEmpty(title)) ||
@@ -215,23 +221,6 @@ public class FaceDetectorWorker extends DataWorker {
         }
     }
 
-    private boolean shouldProcess(String title) {
-        long now = System.currentTimeMillis();
-        if (StringUtils.isBlank(title)) {
-            return true;
-        }
-        synchronized (lock) {
-            recentlyProcessedTitles.entrySet().removeIf(entry -> now - entry.getValue() > TIMEOUT_MS);
-
-            Long lastTime = recentlyProcessedTitles.get(title);
-            if (lastTime != null && now - lastTime < TIMEOUT_MS) {
-                return false;
-            }
-
-            recentlyProcessedTitles.put(title, now);
-            return true;
-        }
-    }
 
     private void detectAndIdentifyPerson(byte[] imageData, Element imageElement) {
         try {
@@ -251,70 +240,67 @@ public class FaceDetectorWorker extends DataWorker {
                 RecognitionResponse result = response.body();
 
                 if (result.result != null && !result.result.isEmpty()) {
-                    //RecognitionResponse.Result faceResult = result.result.get(0);
-                    String titles = "";
-                    for (RecognitionResponse.Result faceResult : result.result)
-                        if (faceResult.subjects != null && !faceResult.subjects.isEmpty()) {
-                            RecognitionResponse.Result.Subject bestMatch = faceResult.subjects.get(0);
+                    RecognitionResponse.Result faceResult = result.result.get(0);
 
-                            if (bestMatch.similarity >= confidenceThreshold) {
-                                String matchedPersonName = bestMatch.subject;
-                                Vertex personVertex = findPersonByName(matchedPersonName);
+                    if (faceResult.subjects != null && !faceResult.subjects.isEmpty()) {
+                        RecognitionResponse.Result.Subject bestMatch = faceResult.subjects.get(0);
 
-                                if (personVertex != null) {
-                                    // Create entityHasImageRaw relationship (from old version)
-                                    String entityHasImageEdgeLabel = "entityHasImageRaw";
-                                    String entityHasImageEdgeId = String.format("%s_%s_entityHasImageRaw",
-                                            personVertex.getId(), imageElement.getId());
+                        if (bestMatch.similarity >= confidenceThreshold) {
+                            String matchedPersonName = bestMatch.subject;
+                            Vertex personVertex = findPersonByName(matchedPersonName);
 
-                                    getGraph().addEdge(entityHasImageEdgeId,
-                                            personVertex,
-                                            (Vertex) imageElement,
-                                            entityHasImageEdgeLabel,
-                                            Visibility.EMPTY,
-                                            getAuthorizations());
+                            if (personVertex != null) {
+                                // Create entityHasImageRaw relationship (from old version)
+                                String entityHasImageEdgeLabel = "entityHasImageRaw";
+                                String entityHasImageEdgeId = String.format("%s_%s_entityHasImageRaw",
+                                        personVertex.getId(), imageElement.getId());
 
-                                    LOGGER.info("Created entityHasImageRaw relationship between person {} and image",
-                                            matchedPersonName);
+                                getGraph().addEdge(entityHasImageEdgeId,
+                                        personVertex,
+                                        (Vertex) imageElement,
+                                        entityHasImageEdgeLabel,
+                                        Visibility.EMPTY,
+                                        getAuthorizations());
 
-                                    // Create rawContainsImageOfEntity relationships (from new version)
-                                    Iterable<Property> detectedObjects = MediaBcSchema.DETECTED_OBJECT.getProperties(imageElement);
+                                LOGGER.info("Created entityHasImageRaw relationship between person {} and image",
+                                        matchedPersonName);
 
-                                    for (Property detectedObject : detectedObjects) {
-                                        String containsImageEdgeLabel = "rawContainsImageOfEntity";
-                                        String containsImageEdgeId = String.format("%s_%s_%s",
-                                                imageElement.getId(),
-                                                detectedObject.getKey(),
-                                                personVertex.getId());
+                                // Create rawContainsImageOfEntity relationships (from new version)
+                                Iterable<Property> detectedObjects = MediaBcSchema.DETECTED_OBJECT.getProperties(imageElement);
 
-                                        getGraph().addEdge(containsImageEdgeId,
-                                                        (Vertex) imageElement,
-                                                        personVertex,
-                                                        containsImageEdgeLabel,
-                                                        Visibility.EMPTY,
-                                                        getAuthorizations())
-                                                .setProperty("detectedObjectKey",
-                                                        Values.stringValue(detectedObject.getName()),
-                                                        Visibility.EMPTY,
-                                                        getAuthorizations());
+                                for (Property detectedObject : detectedObjects) {
+                                    String containsImageEdgeLabel = "rawContainsImageOfEntity";
+                                    String containsImageEdgeId = String.format("%s_%s_%s",
+                                            imageElement.getId(),
+                                            detectedObject.getKey(),
+                                            personVertex.getId());
 
-                                        LOGGER.info("Created rawContainsImageOfEntity relationship between detected face and person {} with key {}",
-                                                matchedPersonName, detectedObject.getKey());
-                                    }
-                                    if (StringUtils.isNotBlank(matchedPersonName)) {
-                                        titles = titles.concat(matchedPersonName + " ");
-                                    }
-                                    // Update image title
-                                    ElementMutation<Element> mutation = imageElement.prepareMutation();
-                                    BcSchema.TITLE.addPropertyValue(mutation, "title", titles, Visibility.EMPTY);
-                                    mutation.save(getAuthorizations());
+                                    getGraph().addEdge(containsImageEdgeId,
+                                                    (Vertex) imageElement,
+                                                    personVertex,
+                                                    containsImageEdgeLabel,
+                                                    Visibility.EMPTY,
+                                                    getAuthorizations())
+                                            .setProperty("detectedObjectKey",
+                                                    Values.stringValue(detectedObject.getName()),
+                                                    Visibility.EMPTY,
+                                                    getAuthorizations());
 
-                                    getGraph().flush();
-                                } else {
-                                    LOGGER.warn("Matched person {} not found in graph", matchedPersonName);
+                                    LOGGER.info("Created rawContainsImageOfEntity relationship between detected face and person {} with key {}",
+                                            matchedPersonName, detectedObject.getKey());
                                 }
+
+                                // Update image title
+                                ElementMutation<Element> mutation = imageElement.prepareMutation();
+                                BcSchema.TITLE.addPropertyValue(mutation, "title", matchedPersonName, Visibility.EMPTY);
+                                mutation.save(getAuthorizations());
+
+                                getGraph().flush();
+                            } else {
+                                LOGGER.warn("Matched person {} not found in graph", matchedPersonName);
                             }
                         }
+                    }
                 }
             }
         } catch (Exception e) {
