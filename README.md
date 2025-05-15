@@ -30,6 +30,7 @@ This repository contains plugins for various data enrichment capabilities:
 * URL Facebook engagement
 * Audio metadata extraction
 * Video metadata extraction
+* Text Classification
 * Creation of video previews
 * Video frame extraction
 * Video audio track extraction
