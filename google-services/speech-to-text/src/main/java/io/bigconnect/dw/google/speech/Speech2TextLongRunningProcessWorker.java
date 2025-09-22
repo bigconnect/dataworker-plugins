@@ -1,13 +1,17 @@
 package io.bigconnect.dw.google.speech;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import retrofit2.Call;
-import okhttp3.MultipartBody;
-import okhttp3.RequestBody;
-import retrofit2.http.Multipart;
-import retrofit2.http.POST;
-import retrofit2.http.Part;
+import com.google.api.gax.longrunning.OperationFuture;
+import com.google.api.gax.rpc.ApiException;
+import com.google.cloud.speech.v1.*;
+import com.google.cloud.storage.BlobId;
+import com.google.cloud.storage.BlobInfo;
+import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.StorageOptions;
 import com.google.inject.Inject;
+import com.google.longrunning.Operation;
+import com.google.longrunning.OperationsClient;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.mware.bigconnect.ffmpeg.AVMediaInfo;
 import com.mware.bigconnect.ffmpeg.AVUtils;
 import com.mware.core.config.Configuration;
 import com.mware.core.ingest.dataworker.ElementOrPropertyStatus;
@@ -36,39 +40,34 @@ import com.mware.ge.values.storable.DefaultStreamingPropertyValue;
 import com.mware.ge.values.storable.StreamingPropertyValue;
 import com.mware.ge.values.storable.Value;
 import com.mware.ge.values.storable.Values;
-import lombok.Getter;
-import lombok.Setter;
+import io.bigconnect.dw.google.common.schema.GoogleCredentialUtils;
 import net.bramp.ffmpeg.FFmpegExecutor;
 import net.bramp.ffmpeg.builder.FFmpegBuilder;
 import net.bramp.ffmpeg.builder.FFmpegOutputBuilder;
 import net.bramp.ffmpeg.job.FFmpegJob;
-import okhttp3.*;
+import net.bramp.ffmpeg.probe.FFmpegProbeResult;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.json.JSONObject;
-import retrofit2.Response;
-import retrofit2.Retrofit;
-import retrofit2.converter.jackson.JacksonConverterFactory;
 
-import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.util.UUID;
 
 import static io.bigconnect.dw.google.speech.Speech2TextSchemaContribution.GOOGLE_S2T_DONE_PROPERTY;
 import static io.bigconnect.dw.google.speech.Speech2TextSchemaContribution.GOOGLE_S2T_PROGRESS_PROPERTY;
 
-@Name("Speech to Text Worker")
-@Description("Performs Speech to Text transcription using VLLM services")
+@Name("Google Speech2Text Data Worker")
+@Description("Performs Speech2Text on Audio/Video files using Google Cloud Services")
 public class Speech2TextLongRunningProcessWorker extends LongRunningProcessWorker {
     private static final BcLogger LOGGER = BcLoggerFactory.getLogger(Speech2TextLongRunningProcessWorker.class);
-    public static final String CONFIG_URL = "vllm.url";
-    public static final String CONFIG_API_KEY = "vllm.api.key";
-    public static final String CONFIG_TIMEOUT = "s2t.timeout.seconds";
-    private static final int DEFAULT_TIMEOUT_SECONDS = 36000;
+    private static final int CHECK_INTERVAL = 10; //seconds
+    static final String CONFIG_GOOGLE_S2T_BUCKET_NAME = "google.s2t.bucket.name";
 
     private final LongRunningProcessRepository longRunningProcessRepository;
     private final Graph graph;
@@ -76,7 +75,8 @@ public class Speech2TextLongRunningProcessWorker extends LongRunningProcessWorke
     private final SchemaRepository schemaRepository;
     private final WorkQueueRepository workQueueRepository;
     private final WebQueueRepository webQueueRepository;
-    private SpeechToTextService service;
+
+    private String bucketName;
 
     @Inject
     public Speech2TextLongRunningProcessWorker(
@@ -99,42 +99,9 @@ public class Speech2TextLongRunningProcessWorker extends LongRunningProcessWorke
     public void prepare(LongRunningWorkerPrepareData workerPrepareData) {
         super.prepare(workerPrepareData);
 
-        String baseUrl = configuration.get(CONFIG_URL, null);
-        String apiKey = configuration.get(CONFIG_API_KEY, null);
-        int timeoutSeconds;
-        try {
-            timeoutSeconds = Integer.parseInt(configuration.get(CONFIG_TIMEOUT, String.valueOf(DEFAULT_TIMEOUT_SECONDS)));
-        } catch (NumberFormatException e) {
-            LOGGER.warn("Invalid timeout value in configuration, using default: " + DEFAULT_TIMEOUT_SECONDS);
-            timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
-        }
-
-        Preconditions.checkState(!StringUtils.isEmpty(baseUrl),
-                "Please provide the '" + CONFIG_URL + "' config parameter");
-
-        OkHttpClient.Builder clientBuilder = new OkHttpClient.Builder()
-                .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
-                .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
-                .writeTimeout(timeoutSeconds, TimeUnit.SECONDS);
-
-        if (!StringUtils.isEmpty(apiKey)) {
-            clientBuilder.addInterceptor(chain -> {
-                Request original = chain.request();
-                Request request = original.newBuilder()
-                        .header("Authorization", "Bearer " + apiKey)
-                        .method(original.method(), original.body())
-                        .build();
-                return chain.proceed(request);
-            });
-        }
-
-        Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl(baseUrl)
-                .client(clientBuilder.build())
-                .addConverterFactory(JacksonConverterFactory.create())
-                .build();
-
-        service = retrofit.create(SpeechToTextService.class);
+        this.bucketName = configuration.get(CONFIG_GOOGLE_S2T_BUCKET_NAME, "");
+        Preconditions.checkState(!StringUtils.isEmpty(bucketName),
+                "Please provide the " + CONFIG_GOOGLE_S2T_BUCKET_NAME + " configuration property");
     }
 
     @Override
@@ -180,135 +147,186 @@ public class Speech2TextLongRunningProcessWorker extends LongRunningProcessWorke
             // Convert to FLAC audio
             longRunningProcessRepository.reportProgress(itemJson, 0.1, "Converting file...");
             long start = System.currentTimeMillis();
-            Path audioPath = prepareAudioFile(vertex, tempFolder);
+            Path audioPath = createFlac(vertex, tempFolder);
             float conversionTime = Math.round((System.currentTimeMillis() - start) / 1000f * 100f) / 100f;
-            longRunningProcessRepository.reportProgress(itemJson, 0.2, "Conversion took " + conversionTime + "s. Processing audio...");
+            longRunningProcessRepository.reportProgress(itemJson, 0.2, "Conversion took " + conversionTime + "s. Uploading to Google...");
 
-            // Create multipart request
-            File audioFile = audioPath.toFile();
-            RequestBody fileBody = RequestBody.create(MediaType.parse("audio/*"), audioFile);
-            MultipartBody.Part filePart = MultipartBody.Part.createFormData("file", audioFile.getName(), fileBody);
-
-            RequestBody languageBody = RequestBody.create(MediaType.parse("text/plain"), language);
-            RequestBody saveOutputBody = RequestBody.create(MediaType.parse("text/plain"), "false");
-
-            Response<SpeechToTextResponse> response = service.processAudio(filePart, languageBody, saveOutputBody).execute();
-
-            if (response.isSuccessful() && response.body() != null) {
-                SpeechToTextResponse result = response.body();
-
-                if ("success".equals(result.getStatus())) {
-                    PropertyMetadata propertyMetadata = new PropertyMetadata(
-                            new SystemUser(), new VisibilityJson(), Visibility.EMPTY
-                    );
-                    propertyMetadata.add(BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(),
-                            Values.stringValue(language), Visibility.EMPTY);
-
-                    BcSchema.TEXT.addPropertyValue(
-                            vertex,
-                            language,
-                            DefaultStreamingPropertyValue.create(result.getTranscription()),
-                            propertyMetadata.createMetadata(),
-                            Visibility.EMPTY,
-                            vertex.getAuthorizations()
-                    );
-
-                    webQueueRepository.pushTextUpdated(vertex.getId(), Priority.HIGH);
-
-                    GOOGLE_S2T_PROGRESS_PROPERTY.setProperty(vertex, Boolean.FALSE, Visibility.EMPTY, vertex.getAuthorizations());
-                    GOOGLE_S2T_DONE_PROPERTY.setProperty(vertex, Boolean.TRUE, Visibility.EMPTY, vertex.getAuthorizations());
-
-                    graph.flush();
-                    logElement(vertex);
-
-                    workQueueRepository.pushOnDwQueue(
-                            vertex,
-                            language,
-                            RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
-                            null,
-                            null,
-                            Priority.HIGH,
-                            ElementOrPropertyStatus.UPDATE,
-                            null
-                    );
-
-                    longRunningProcessRepository.reportProgress(itemJson, 1.0, "Completed");
-                } else {
-                    longRunningProcessRepository.reportProgress(
-                            itemJson.put("error", "Transcription failed"),
-                            1.0,
-                            "Error"
-                    );
-                }
-            } else {
-                longRunningProcessRepository.reportProgress(
-                        itemJson.put("error", "Service call failed with status: " + response.code()),
-                        1.0,
-                        "Error"
-                );
-            }
+            // Probe Audio info
+            final AudioInfo audioInfo = new AudioInfo(audioPath.toAbsolutePath().toString());
+            // Upload to GCS
+            final String gcsId = UUID.randomUUID().toString();
+            start = System.currentTimeMillis();
+            uploadObjectToGCS(gcsId, audioPath.toAbsolutePath().toString());
+            float uploadTime = Math.round((System.currentTimeMillis() - start) / 1000f * 100f) / 100f;
+            longRunningProcessRepository.reportProgress(itemJson, 0.3, "Upload took " + uploadTime + "s. Asking Google to perform speech recognition...");
 
             // Cleanup
             FileUtils.deleteQuietly(tempFolder.toFile());
 
+            // Speech2Text request (async - long running)
+            String opName = null;
+            try (final SpeechClient speechClient = SpeechClient.create()) {
+                RecognitionConfig config =
+                        RecognitionConfig.newBuilder()
+                                .setEncoding(RecognitionConfig.AudioEncoding.FLAC)
+                                .setSampleRateHertz(audioInfo.getSampleRate())
+                                .setAudioChannelCount(audioInfo.getChannels())
+                                .setLanguageCode(language)
+                                .build();
+                RecognitionAudio audio =
+                        RecognitionAudio.newBuilder().setUri("gs://" + bucketName + "/" + gcsId).build();
+
+                OperationFuture<LongRunningRecognizeResponse, LongRunningRecognizeMetadata> response =
+                        speechClient.longRunningRecognizeAsync(config, audio);
+                opName = response.getName();
+                LOGGER.info("Submitted Google response operation with id %s", response.getName());
+            }
+
+            int secondCounter = 0;
+            while (!checkResult(vertex, language, itemJson, opName)) {
+                Thread.sleep(CHECK_INTERVAL * 1000);
+                secondCounter += CHECK_INTERVAL;
+                if (secondCounter > 60_000) {
+                    // just to be safe, cancel the thread after 1h
+                    longRunningProcessRepository.reportProgress(itemJson, 1.0, "Dangling task cancelled");
+                    break;
+                }
+            }
         } catch (Exception ex) {
-            LOGGER.error("Could not process audio file", ex);
-            longRunningProcessRepository.reportProgress(
-                    itemJson.put("error", ex.getMessage()),
-                    1.0,
-                    "Error"
-            );
+            LOGGER.error("Could not cut video clip!", ex);
+            longRunningProcessRepository.reportProgress(itemJson.put("error", ex.getMessage()), 1.0, "Error");
         }
     }
 
-    private Path prepareAudioFile(Vertex vertex, Path folder) throws IOException {
-        Path sourceFile = Files.createFile(folder.resolve(S2TConstants.TEMP_VIDEO_NAME));
-        Path outputFile = folder.resolve(S2TConstants.TEMP_FLAC_NAME);
+    private boolean checkResult(Vertex vertex, String language, JSONObject itemJson, String operationName) {
+        String lrpId = itemJson.getString("id");
+
+        try (final SpeechClient speechClient = SpeechClient.create()) {
+            try (OperationsClient client = speechClient.getOperationsClient()) {
+                final Storage storage = StorageOptions.newBuilder().setProjectId(GoogleCredentialUtils.getProjectId()).build().getService();
+                try {
+                    Operation operation = client.getOperation(operationName);
+                    LongRunningRecognizeMetadata longRunningRecognizeMetadata =
+                            LongRunningRecognizeMetadata.parseFrom(operation.getMetadata().getValue());
+
+                    if (operation.getDone()) {
+                        try {
+                            StringBuilder resultedText = new StringBuilder();
+                            com.google.cloud.speech.v1p1beta1.LongRunningRecognizeResponse opResponse = com.google.cloud.speech.v1p1beta1.LongRunningRecognizeResponse.parseFrom(
+                                    operation.getResponse().getValue()
+                            );
+                            if (opResponse.getResultsCount() > 0) {
+                                for (int i = 0; i < opResponse.getResultsCount(); i++) {
+                                    resultedText.append(" ")
+                                            .append(opResponse.getResults(i).getAlternatives(0).getTranscript());
+                                }
+                            }
+
+                            PropertyMetadata propertyMetadata = new PropertyMetadata(
+                                    new SystemUser(), new VisibilityJson(), Visibility.EMPTY
+                            );
+                            propertyMetadata.add(BcSchema.TEXT_LANGUAGE_METADATA.getMetadataKey(), Values.stringValue(language), Visibility.EMPTY);
+                            BcSchema.TEXT.addPropertyValue(
+                                    vertex,
+                                    language,
+                                    DefaultStreamingPropertyValue.create(resultedText.toString()),
+                                    propertyMetadata.createMetadata(), Visibility.EMPTY, vertex.getAuthorizations()
+                            );
+
+                            // add also the new language
+                            RawObjectSchema.RAW_LANGUAGE.addPropertyValue(vertex, language, language,
+                                    null, Visibility.EMPTY, vertex.getAuthorizations());
+
+                            webQueueRepository.pushTextUpdated(vertex.getId(), Priority.HIGH);
+
+                            GOOGLE_S2T_PROGRESS_PROPERTY.setProperty(vertex, Boolean.FALSE, Visibility.EMPTY, vertex.getAuthorizations());
+                            GOOGLE_S2T_DONE_PROPERTY.setProperty(vertex, Boolean.TRUE, Visibility.EMPTY, vertex.getAuthorizations());
+
+                            // Cleanup
+                            graph.flush();
+
+                            logElement(vertex);
+
+                            workQueueRepository.pushOnDwQueue(
+                                    vertex,
+                                    language,
+                                    RawObjectSchema.RAW_LANGUAGE.getPropertyName(),
+                                    null,
+                                    null,
+                                    Priority.HIGH,
+                                    ElementOrPropertyStatus.UPDATE,
+                                    null
+                            );
+
+                            long spent = Instant.now().getEpochSecond() - longRunningRecognizeMetadata.getStartTime().getSeconds();
+                            longRunningProcessRepository.reportProgress(lrpId, 0.96, "Finished in " + spent + "s. Cleaning up...");
+
+                            final String meta = client.getOperation(operationName).getMetadata().getValue().toStringUtf8();
+                            if (!StringUtils.isEmpty(meta)) {
+                                String[] gcsUrl = meta.split("/");
+                                if (gcsUrl.length > 0) {
+                                    storage.delete(bucketName, gcsUrl[gcsUrl.length - 1]);
+                                }
+                            }
+                            longRunningProcessRepository.reportProgress(lrpId, 1, "Completed");
+                            return true;
+                        } catch (InvalidProtocolBufferException e) {
+                            itemJson.put("error", e.getMessage());
+                            longRunningProcessRepository.reportProgress(lrpId, 1.0, "Google protocol error");
+                            return false;
+                        }
+                    } else {
+                        double progressPercent = 0.3 // previously reported progress
+                                + (longRunningRecognizeMetadata.getProgressPercent() * 0.65 / 100f);
+                        long spent = Instant.now().getEpochSecond() - longRunningRecognizeMetadata.getStartTime().getSeconds();
+                        longRunningProcessRepository.reportProgress(lrpId, progressPercent, "Google progress: " + longRunningRecognizeMetadata.getProgressPercent() + "%, seconds: " + spent);
+                        return false;
+                    }
+                } catch (ApiException | InvalidProtocolBufferException ex) {
+                    itemJson.put("error", ex.getMessage());
+                    longRunningProcessRepository.reportProgress(lrpId, 1.0, "Google protocol error");
+                    return false;
+                }
+            }
+        } catch (IOException e) {
+            itemJson.put("error", e.getMessage());
+            longRunningProcessRepository.reportProgress(lrpId, 1.0, "Google protocol error");
+            return false;
+        }
+    }
+
+    private void uploadObjectToGCS(String objectName, String filePath) throws IOException {
+        Storage storage = StorageOptions.newBuilder().setProjectId(GoogleCredentialUtils.getProjectId()).build().getService();
+        BlobId blobId = BlobId.of(bucketName, objectName);
+        BlobInfo blobInfo = BlobInfo.newBuilder(blobId).build();
+        storage.create(blobInfo, Files.readAllBytes(Paths.get(filePath)));
+        LOGGER.info("File %s uploaded to bucket %s as %s", filePath, bucketName, objectName);
+    }
+
+    private Path createFlac(Vertex vertex, Path folder) throws IOException {
+        Path videoFile = Files.createFile(folder.resolve(S2TConstants.TEMP_VIDEO_NAME));
+        Path finalFile = folder.resolve(S2TConstants.TEMP_FLAC_NAME);
 
         StreamingPropertyValue spv = BcSchema.RAW.getPropertyValue(vertex);
-        IOUtils.copyLarge(spv.getInputStream(), Files.newOutputStream(sourceFile.toFile().toPath()));
+        IOUtils.copyLarge(spv.getInputStream(), new FileOutputStream(videoFile.toFile()));
 
-        // Check source file size
-        long sourceSize = Files.size(sourceFile);
-        if (sourceSize > 100 * 1024 * 1024) { // If larger than 100MB
-            LOGGER.warn("Source file is large: {} MB", sourceSize / (1024 * 1024));
-        }
-
-        String mimeType = BcSchema.MIME_TYPE.getFirstPropertyValue(vertex);
         FFmpegBuilder builder = new FFmpegBuilder();
-        builder.addExtraArgs("-vn"); // No video
-        builder.addExtraArgs("-sn"); // No subtitles
+        builder.addExtraArgs("-vn");
+        builder.addExtraArgs("-sn");
 
-        builder.addInput(sourceFile.toAbsolutePath().toString());
-
-        if (sourceSize > 100 * 1024 * 1024) {
-            // For large files, use more compression
-            builder.addOutput(new FFmpegOutputBuilder()
-                    .setFilename(outputFile.toAbsolutePath().toString())
-                    .setAudioCodec("flac")
-                    .setAudioChannels(1)
-                    .setAudioSampleRate(16000) // Lower sample rate for speech
-                    .addExtraArgs("-compression_level", "8") // Higher compression
-            );
-        } else {
-            // For smaller files, use standard settings
-            builder.addOutput(new FFmpegOutputBuilder()
-                    .setFilename(outputFile.toAbsolutePath().toString())
-                    .setAudioCodec("flac")
-                    .setAudioChannels(1)
-                    .addExtraArgs("-compression_level", "0")
-            );
-        }
+        builder.addInput(videoFile.toAbsolutePath().toString());
+        builder.addOutput(new FFmpegOutputBuilder()
+                .setFilename(finalFile.toAbsolutePath().toString())
+                .setAudioCodec("flac")
+                .setAudioChannels(1)
+                .addExtraArgs("-compression_level", "0")
+        );
 
         FFmpegExecutor executor = new FFmpegExecutor(AVUtils.ffmpeg());
         FFmpegJob job = executor.createJob(builder);
         job.run();
 
-        // Verify output size
-        long outputSize = Files.size(outputFile);
-        LOGGER.info("Converted file size: {} MB", outputSize / (1024 * 1024));
-
-        return outputFile;
+        return finalFile;
     }
 
     private void logElement(Element element) {
@@ -327,30 +345,37 @@ public class Speech2TextLongRunningProcessWorker extends LongRunningProcessWorke
 
         LOGGER.warn(sb.toString());
     }
-}
 
-interface SpeechToTextService {
-    @Multipart
-    @POST("v1/speech-to-text")
-    Call<SpeechToTextResponse> processAudio(
-            @Part MultipartBody.Part file,
-            @Part("language") RequestBody language,
-            @Part("save_output") RequestBody saveOutput
-    );
-}
+    static class AudioInfo {
+        private static final int DEFAULT_SAMPLE_RATE = 44100;
+        private static final int DEFAULT_NUM_CHANNELS = 2;
 
-@Setter
-@Getter
-class SpeechToTextResponse {
-    private String status;
+        private int sampleRate;
+        private int channels;
+        private double duration;
 
-    private String transcription;
+        AudioInfo(String filePath) {
+            initialize(filePath);
+        }
 
-    private String language;
+        private void initialize(String filePath) {
+            FFmpegProbeResult probe = AVMediaInfo.probe(filePath);
+            this.sampleRate = DEFAULT_SAMPLE_RATE;
+            this.channels = DEFAULT_NUM_CHANNELS;
+            if (probe != null && !probe.getStreams().isEmpty()) {
+                this.sampleRate = probe.getStreams().get(0).sample_rate;
+                this.channels = probe.getStreams().get(0).channels;
+                this.duration = probe.getStreams().get(0).duration;
+            }
+        }
 
-    @JsonProperty("output_file")
-    private String outputFile;
+        int getSampleRate() {
+            return sampleRate;
+        }
 
-    private long timestamp;
+        int getChannels() {
+            return channels;
+        }
+    }
 
 }
